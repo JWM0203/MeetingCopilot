@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+models/
+*.log
+.vite/
+*.tsbuildinfo
+
+# local npm registry mirror config (China-specific; see README for setup tips)
+.npmrc
+
+# internal working notes -- not part of the release
+HANDOFF.md
+PLAN.en.md
+PLAN.zh.md

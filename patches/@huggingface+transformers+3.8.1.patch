@@ -1,0 +1,58 @@
+diff --git a/node_modules/@huggingface/transformers/dist/transformers.node.cjs b/node_modules/@huggingface/transformers/dist/transformers.node.cjs
+index e22c838..7f03b02 100644
+--- a/node_modules/@huggingface/transformers/dist/transformers.node.cjs
++++ b/node_modules/@huggingface/transformers/dist/transformers.node.cjs
+@@ -8174,6 +8174,24 @@ async function decoderForward(self, model_inputs, is_encoder_decoder = false) {
+         const start_index = ['paligemma', 'gemma3_text', 'gemma3'].includes(self.config.model_type) ? 1 : 0;
+         new_model_inputs.position_ids = createPositionIds(new_model_inputs, past_key_values, start_index);
+     }
++    // [LOCAL PATCH] Synthesize `cache_position` for newer optimum exports that
++    // declare it (e.g. onnx-community/whisper-large-v3-turbo). transformers.js
++    // 3.8.1 drives these merged decoders via `use_cache_branch` but never
++    // provides cache_position, so ORT throws "Missing the following inputs:
++    // cache_position". It is simply the absolute positions of the current
++    // input_ids in the KV cache: [past_len .. past_len + cur_len - 1].
++    if (session.inputNames.includes('cache_position') && !new_model_inputs.cache_position) {
++        const cp_ids = new_model_inputs.input_ids ?? new_model_inputs.decoder_input_ids ?? new_model_inputs.inputs_embeds;
++        if (cp_ids && cp_ids.dims) {
++            const cur_len = Number(cp_ids.dims.at(-1));
++            const past_len = past_key_values
++                ? Number(Object.values(past_key_values)[0].dims.at(-2))
++                : 0;
++            const cp_data = new BigInt64Array(cur_len);
++            for (let i = 0; i < cur_len; ++i) cp_data[i] = BigInt(past_len + i);
++            new_model_inputs.cache_position = new _utils_tensor_js__WEBPACK_IMPORTED_MODULE_9__.Tensor('int64', cp_data, [cur_len]);
++        }
++    }
+ 
+     // Unpack the `past_key_values` object into model inputs
+     self.addPastKeyValues(new_model_inputs, past_key_values);
+diff --git a/node_modules/@huggingface/transformers/dist/transformers.node.mjs b/node_modules/@huggingface/transformers/dist/transformers.node.mjs
+index e39f187..3124be6 100644
+--- a/node_modules/@huggingface/transformers/dist/transformers.node.mjs
++++ b/node_modules/@huggingface/transformers/dist/transformers.node.mjs
+@@ -8159,6 +8159,24 @@ async function decoderForward(self, model_inputs, is_encoder_decoder = false) {
+         const start_index = ['paligemma', 'gemma3_text', 'gemma3'].includes(self.config.model_type) ? 1 : 0;
+         new_model_inputs.position_ids = createPositionIds(new_model_inputs, past_key_values, start_index);
+     }
++    // [LOCAL PATCH] Synthesize `cache_position` for newer optimum exports that
++    // declare it (e.g. onnx-community/whisper-large-v3-turbo). transformers.js
++    // 3.8.1 drives these merged decoders via `use_cache_branch` but never
++    // provides cache_position, so ORT throws "Missing the following inputs:
++    // cache_position". It is simply the absolute positions of the current
++    // input_ids in the KV cache: [past_len .. past_len + cur_len - 1].
++    if (session.inputNames.includes('cache_position') && !new_model_inputs.cache_position) {
++        const cp_ids = new_model_inputs.input_ids ?? new_model_inputs.decoder_input_ids ?? new_model_inputs.inputs_embeds;
++        if (cp_ids && cp_ids.dims) {
++            const cur_len = Number(cp_ids.dims.at(-1));
++            const past_len = past_key_values
++                ? Number(Object.values(past_key_values)[0].dims.at(-2))
++                : 0;
++            const cp_data = new BigInt64Array(cur_len);
++            for (let i = 0; i < cur_len; ++i) cp_data[i] = BigInt(past_len + i);
++            new_model_inputs.cache_position = new _utils_tensor_js__WEBPACK_IMPORTED_MODULE_9__.Tensor('int64', cp_data, [cur_len]);
++        }
++    }
+ 
+     // Unpack the `past_key_values` object into model inputs
+     self.addPastKeyValues(new_model_inputs, past_key_values);

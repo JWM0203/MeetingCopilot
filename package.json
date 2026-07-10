@@ -1,0 +1,43 @@
+{
+  "name": "meeting-copilot",
+  "version": "0.1.0",
+  "description": "Real-time stealth meeting/interview copilot for Windows: streaming ASR (local FunASR / cloud), first-person teleprompter answers via BYOK LLM, invisible to screen sharing",
+  "main": "./out/main/index.js",
+  "author": "JWM0203",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JWM0203/MeetingCopilot.git"
+  },
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "postinstall": "patch-package",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "harness": "node tools/asr-harness.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "41.1.1",
+    "electron-vite": "^3.1.0",
+    "patch-package": "^8.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.1.0"
+  }
+}

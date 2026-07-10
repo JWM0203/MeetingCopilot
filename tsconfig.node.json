@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "paths": { "@shared/*": ["./shared/*"] }
+  },
+  "include": [
+    "electron/**/*.ts",
+    "shared/**/*.ts",
+    "test/**/*.ts",
+    "electron.vite.config.ts"
+  ]
+}
