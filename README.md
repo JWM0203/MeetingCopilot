@@ -20,6 +20,7 @@ Live transcription of the other side · first-person teleprompter answers · inv
 
 - 🎧 **Hears the other side directly — no meeting bot.** Captures Windows system loopback audio, so it works with any meeting app (Zoom / Teams / VoOV / …) without joining the call. Optional independent microphone channel transcribes your own voice separately.
 - ⚡ **Streaming ASR with 4 switchable backends** — local FunASR streaming (default: free, private; the Python sidecar is auto-spawned and reaped by the app), local Whisper turbo (offline fallback, DirectML GPU), Alibaba Cloud `fun-asr-realtime` (word-by-word cloud streaming), MiMo per-segment. Live gray partial subtitles appear while speech is still in progress.
+- 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
 - 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing is local and deterministic, nothing gets uploaded. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
@@ -31,6 +32,14 @@ Live transcription of the other side · first-person teleprompter answers · inv
 | Dark | Light |
 |---|---|
 | ![dark theme](docs/main-dark.png) | ![light theme](docs/main-light.png) |
+
+### Bilingual in one session
+
+![Bilingual demo: automatic zh/en switching](docs/demo-bilingual.gif)
+
+*A Chinese question, then an English one — same session, nothing reconfigured. The local ASR picks up the language switch automatically (both at ~1.6 s), and after one click on `答:EN` the answer streams out in English, still grounded in the same resume.*
+
+![bilingual answer](docs/bilingual.png)
 
 ## Requirements
 
