@@ -16,6 +16,12 @@ Live transcription of the other side · first-person teleprompter answers · inv
 
 *Real capture, no mockup: the interviewer's voice is transcribed while they are still speaking (left, live gray subtitle), and a read-aloud answer grounded in your resume streams in automatically (right).*
 
+### 🎬 3-minute real-world walkthrough
+
+[![Watch the demo video](docs/video-poster.jpg)](docs/MeetingCopilot-demo.mp4)
+
+*Click to watch (with sound): using an English podcast and a Chinese vlog as the "other side" — live transcription of both languages, inline translation, auto answers in Chinese and English, 0.94 s end-to-end latency on screen.*
+
 ## Features
 
 - 🎧 **Hears the other side directly — no meeting bot.** Captures Windows system loopback audio, so it works with any meeting app (Zoom / Teams / VoOV / …) without joining the call. Optional independent microphone channel transcribes your own voice separately.
