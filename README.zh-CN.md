@@ -7,7 +7,6 @@
 实时转录对方说话 · 第一人称提词式回答 · 屏幕共享完全不可见
 
 <a href="https://github.com/JWM0203/MeetingCopilot/stargazers"><img src="https://img.shields.io/github/stars/JWM0203/MeetingCopilot?style=flat-square&logo=github&color=2a6df4" alt="GitHub stars"></a>
-<img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4?style=flat-square&logo=windows" alt="platform">
 <img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-3da639?style=flat-square" alt="license">
 <a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
