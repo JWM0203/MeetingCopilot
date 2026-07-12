@@ -23,6 +23,7 @@ const zh = {
     shotQuestion: '截图提问',
     captureStartFail: (msg: string) => `采集启动失败: ${msg}`,
     micStartFail: (msg: string) => `麦克风启动失败: ${msg}`,
+    themInputSwitchFail: (msg: string) => `对方音频输入切换失败: ${msg}`,
     translateFail: '（翻译失败）',
     kbNoText: (name: string) =>
       `「${name}」没有可提取的文本（扫描版 PDF？请换文字版或 .md/.txt）`,
@@ -203,6 +204,7 @@ const en: Dict = {
     shotQuestion: 'Screenshot question',
     captureStartFail: (msg: string) => `Capture failed to start: ${msg}`,
     micStartFail: (msg: string) => `Microphone failed to start: ${msg}`,
+    themInputSwitchFail: (msg: string) => `Failed to switch the other-party input: ${msg}`,
     translateFail: '(translation failed)',
     kbNoText: (name: string) =>
       `"${name}" has no extractable text (scanned PDF? Use a text-based file or .md/.txt)`,

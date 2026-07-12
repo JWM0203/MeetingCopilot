@@ -11,7 +11,7 @@
 import { spawn, execFile, type ChildProcess } from 'child_process';
 import { connect } from 'net';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, posix, win32 } from 'path';
 
 const DEFAULT_PYTHON = 'C:\\ProgramData\\miniconda3\\envs\\funasr\\python.exe';
 /** model load + warm; first-ever run also downloads the selected model */
@@ -22,10 +22,13 @@ export function pythonCandidates(
   platform: string = process.platform,
   explicit: string | undefined = process.env.MC_FUNASR_PYTHON,
 ): string[] {
+  // join per the REQUESTED platform, not the host — keeps the function (and
+  // its tests) deterministic when asked about a foreign platform
+  const j = platform === 'win32' ? win32.join : posix.join;
   const venv =
     platform === 'win32'
-      ? join(appRoot, '.venv', 'Scripts', 'python.exe')
-      : join(appRoot, '.venv', 'bin', 'python');
+      ? j(appRoot, '.venv', 'Scripts', 'python.exe')
+      : j(appRoot, '.venv', 'bin', 'python');
   const candidates = [
     explicit,
     venv,

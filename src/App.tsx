@@ -543,7 +543,7 @@ export function App() {
         .catch((e) => {
           window.mc.captureStopped();
           setCapturing(false);
-          setAsr((s) => ({ ...s, lastError: `对方音频输入切换失败: ${(e as Error).message}` }));
+          setAsr((s) => ({ ...s, lastError: tRef.current.app.themInputSwitchFail((e as Error).message) }));
         });
     }
   }, []);
@@ -669,7 +669,7 @@ export function App() {
               <option value="">{t.titlebar.themDeviceDefault}</option>
               {mics.map((m) => (
                 <option key={m.deviceId} value={m.deviceId}>
-                  {m.label.slice(0, 14)}
+                  {(m.label || t.titlebar.themDeviceDefault).slice(0, 14)}
                 </option>
               ))}
             </select>
