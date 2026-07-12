@@ -1,40 +1,72 @@
 import { useState } from 'react';
-import type { AsrLanguage, FontScale, PublicSettings, ThemeMode } from '../../shared/protocol';
+import type { AsrLanguage, FontScale, PublicSettings, ThemeMode, UiLang } from '../../shared/protocol';
+import { useT } from '../i18n';
 
-/** provider presets: pick to auto-fill base URL + a sensible model */
-const TEXT_PRESETS: Record<string, { baseUrl: string; model: string }> = {
-  'DeepSeek 快速·非思考 (deepseek-chat)': { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  'DeepSeek 思考·v4-flash': { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash' },
-  'DeepSeek 深度·v4-pro': { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-v4-pro' },
-  'MiMo 快速 (mimo-v2.5-pro)': { baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-pro' },
-};
-const VISION_PRESETS: Record<string, { baseUrl: string; model: string; proxy: string }> = {
-  MiMo: { baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5', proxy: '' },
-  Gemini: {
+/** provider presets: pick to auto-fill base URL + a sensible model.
+ * Labels are bilingual — the UI language picks which one renders. */
+const TEXT_PRESETS: { zh: string; en: string; baseUrl: string; model: string }[] = [
+  {
+    zh: 'DeepSeek 快速·非思考 (deepseek-chat)',
+    en: 'DeepSeek fast · non-thinking (deepseek-chat)',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+  },
+  {
+    zh: 'DeepSeek 思考·v4-flash',
+    en: 'DeepSeek thinking · v4-flash',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4-flash',
+  },
+  {
+    zh: 'DeepSeek 深度·v4-pro',
+    en: 'DeepSeek deep · v4-pro',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-v4-pro',
+  },
+  {
+    zh: 'MiMo 快速 (mimo-v2.5-pro)',
+    en: 'MiMo fast (mimo-v2.5-pro)',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    model: 'mimo-v2.5-pro',
+  },
+];
+const VISION_PRESETS: { zh: string; en: string; baseUrl: string; model: string; proxy: string }[] = [
+  { zh: 'MiMo', en: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5', proxy: '' },
+  {
+    zh: 'Gemini',
+    en: 'Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     model: 'gemini-2.5-flash',
     proxy: '127.0.0.1:7897',
   },
-};
-const CLOUD_ASR_PRESETS: Record<string, { baseUrl: string; model: string }> = {
-  MiMo: { baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-asr' },
-};
+];
+const CLOUD_ASR_PRESETS: { zh: string; en: string; baseUrl: string; model: string }[] = [
+  { zh: 'MiMo', en: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-asr' },
+];
 /** cloud streaming presets (backend 'cloud-realtime'; local streaming is its own backend) */
-const REALTIME_ASR_PRESETS: Record<string, { baseUrl: string; model: string }> = {
-  '阿里云 fun-asr-realtime（中英双优，逐字丝滑）': {
+const REALTIME_ASR_PRESETS: { zh: string; en: string; baseUrl: string; model: string }[] = [
+  {
+    zh: '阿里云 fun-asr-realtime（中英双优，逐字丝滑）',
+    en: 'Aliyun fun-asr-realtime (great zh+en, word-by-word)',
     baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
     model: 'fun-asr-realtime',
   },
-  '阿里云 paraformer-realtime-v2': {
+  {
+    zh: '阿里云 paraformer-realtime-v2',
+    en: 'Aliyun paraformer-realtime-v2',
     baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
     model: 'paraformer-realtime-v2',
   },
-};
+];
 /** local streaming models (backend 'local-realtime'; endpoint is fixed) */
-const LOCAL_REALTIME_MODELS: Record<string, string> = {
-  'fun-asr-nano': 'Fun-ASR-Nano（中英+标点，推荐）',
-  'paraformer-zh-streaming': 'paraformer 流式（纯中文，字幕更跟手）',
-};
+const LOCAL_REALTIME_MODELS: { value: string; zh: string; en: string }[] = [
+  { value: 'fun-asr-nano', zh: 'Fun-ASR-Nano（中英+标点，推荐）', en: 'Fun-ASR-Nano (zh+en, punctuation; recommended)' },
+  {
+    value: 'paraformer-zh-streaming',
+    zh: 'paraformer 流式（纯中文，字幕更跟手）',
+    en: 'paraformer streaming (Chinese-only, snappier captions)',
+  },
+];
 
 /**
  * BYOK settings (R7): OpenAI-compatible providers for text / vision / cloud
@@ -50,6 +82,7 @@ export function SettingsPanel({
   onSaved: (s: PublicSettings) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [baseUrl, setBaseUrl] = useState(settings.llm.baseUrl);
   const [model, setModel] = useState(settings.llm.model);
   const [apiKey, setApiKey] = useState('');
@@ -72,7 +105,11 @@ export function SettingsPanel({
   const [hotkeyShot, setHotkeyShot] = useState(settings.ui.hotkeyShot);
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
+  const [uiLang, setUiLang] = useState<UiLang>(settings.ui.lang);
   const [saving, setSaving] = useState(false);
+
+  /** preset display name in the current UI language */
+  const name = (p: { zh: string; en: string }) => (t.uiLang === 'zh' ? p.zh : p.en);
 
   const save = async () => {
     setSaving(true);
@@ -104,7 +141,7 @@ export function SettingsPanel({
           },
           localRealtime: { model: rtLocalModel },
         },
-        ui: { hotkeyToggle: hotkey.trim(), hotkeyShot: hotkeyShot.trim(), fontScale, theme },
+        ui: { hotkeyToggle: hotkey.trim(), hotkeyShot: hotkeyShot.trim(), fontScale, theme, lang: uiLang },
       });
       onSaved(next);
     } finally {
@@ -112,57 +149,59 @@ export function SettingsPanel({
     }
   };
 
-  const keyState = (set: boolean) => (set ? '（已设置）' : '（未设置）');
+  const keyState = (set: boolean) => (set ? t.settings.keySet : t.settings.keyUnset);
 
   return (
     <div className="settings">
-      <div className="settings-section">文本大模型（回答/翻译）</div>
+      <div className="settings-section">{t.settings.textSection}</div>
       <div className="settings-row">
-        <label>快速预设（选择自动填入地址+模型，再填 key）</label>
+        <label>{t.settings.presetLabel}</label>
         <select
           value=""
           onChange={(e) => {
-            const p = TEXT_PRESETS[e.target.value];
+            const p = TEXT_PRESETS[Number(e.target.value)];
             if (p) {
               setBaseUrl(p.baseUrl);
               setModel(p.model);
             }
           }}
         >
-          <option value="">— 选择预设 —</option>
-          {Object.keys(TEXT_PRESETS).map((k) => (
-            <option key={k} value={k}>
-              {k}
+          <option value="">{t.settings.presetPick}</option>
+          {TEXT_PRESETS.map((p, i) => (
+            <option key={p.model + p.baseUrl} value={i}>
+              {name(p)}
             </option>
           ))}
         </select>
       </div>
       <div className="settings-row">
-        <label>Base URL</label>
+        <label>{t.settings.baseUrl}</label>
         <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} spellCheck={false} />
       </div>
       <div className="settings-row">
-        <label>模型（DeepSeek 用 deepseek-chat；MiMo 用 mimo-v2.5-pro）</label>
+        <label>{t.settings.model}</label>
         <input value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} />
       </div>
       <div className="settings-row">
-        <label>API Key {keyState(settings.llm.apiKeySet)}</label>
+        <label>
+          {t.settings.apiKey} {keyState(settings.llm.apiKeySet)}
+        </label>
         <input
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={settings.llm.apiKeySet ? '留空则不修改' : 'sk-...'}
+          placeholder={settings.llm.apiKeySet ? t.settings.keyKeepPlaceholder : 'sk-...'}
         />
       </div>
 
-      <div className="settings-section">视觉模型（截图问答 / 多模态回答）</div>
-      <div className="settings-hint">纯文本/多模态切换在标题栏；截图按钮仅多模态模式显示。</div>
+      <div className="settings-section">{t.settings.visionSection}</div>
+      <div className="settings-hint">{t.settings.visionHint}</div>
       <div className="settings-row">
-        <label>快速预设</label>
+        <label>{t.settings.visionPreset}</label>
         <select
           value=""
           onChange={(e) => {
-            const p = VISION_PRESETS[e.target.value];
+            const p = VISION_PRESETS[Number(e.target.value)];
             if (p) {
               setVisionBaseUrl(p.baseUrl);
               setVisionModel(p.model);
@@ -170,78 +209,77 @@ export function SettingsPanel({
             }
           }}
         >
-          <option value="">— 选择预设 —</option>
-          {Object.keys(VISION_PRESETS).map((k) => (
-            <option key={k} value={k}>
-              {k}
+          <option value="">{t.settings.presetPick}</option>
+          {VISION_PRESETS.map((p, i) => (
+            <option key={p.model + p.baseUrl} value={i}>
+              {name(p)}
             </option>
           ))}
         </select>
       </div>
       <div className="settings-row">
-        <label>Base URL（MiMo 直连 https://api.xiaomimimo.com/v1；Gemini 需填代理）</label>
+        <label>{t.settings.visionBaseUrl}</label>
         <input
           value={visionBaseUrl}
           onChange={(e) => setVisionBaseUrl(e.target.value)}
           spellCheck={false}
-          placeholder="留空则截图问答不可用"
+          placeholder={t.settings.visionBaseUrlPlaceholder}
         />
       </div>
       <div className="settings-row">
-        <label>视觉模型名（MiMo: mimo-v2.5；Gemini: gemini-2.5-flash；Qwen: qwen-vl-max）</label>
+        <label>{t.settings.visionModel}</label>
         <input value={visionModel} onChange={(e) => setVisionModel(e.target.value)} spellCheck={false} />
       </div>
       <div className="settings-row">
-        <label>视觉 API Key {keyState(settings.vision.apiKeySet)}</label>
+        <label>
+          {t.settings.visionApiKey} {keyState(settings.vision.apiKeySet)}
+        </label>
         <input
           type="password"
           value={visionApiKey}
           onChange={(e) => setVisionApiKey(e.target.value)}
-          placeholder={settings.vision.apiKeySet ? '留空则不修改' : ''}
+          placeholder={settings.vision.apiKeySet ? t.settings.keyKeepPlaceholder : ''}
         />
       </div>
       <div className="settings-row">
-        <label>视觉代理（被墙的模型如 Gemini 填 127.0.0.1:7897；MiMo 直连留空）</label>
+        <label>{t.settings.visionProxy}</label>
         <input
           value={visionProxy}
           onChange={(e) => setVisionProxy(e.target.value)}
           spellCheck={false}
-          placeholder="留空 = 直连"
+          placeholder={t.settings.visionProxyPlaceholder}
         />
       </div>
 
-      <div className="settings-section">转录（ASR）</div>
+      <div className="settings-section">{t.settings.asrSection}</div>
       {window.mc.platform === 'darwin' && (
-        <div className="settings-hint">
-          macOS 不支持 Electron 的 Windows 回环采集。点击标题栏「开始」后可选择普通输入；若要采集会议/系统声音，请先安装并选择
-          BlackHole 等虚拟音频设备。
-        </div>
+        <div className="settings-hint">{t.settings.macAudioHint}</div>
       )}
       <div className="settings-row">
-        <label>转录后端</label>
+        <label>{t.settings.asrBackend}</label>
         <select
           value={asrBackend}
           onChange={(e) =>
             setAsrBackend(e.target.value as 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime')
           }
         >
-          <optgroup label="本地（免费·隐私）">
-            <option value="local-realtime">本地流式 FunASR（边说边出字，引擎自动启动，默认）</option>
-            <option value="local">本地 Whisper turbo（离线兜底）</option>
+          <optgroup label={t.settings.asrLocalGroup}>
+            <option value="local-realtime">{t.settings.asrLocalRealtime}</option>
+            <option value="local">{t.settings.asrLocalWhisper}</option>
           </optgroup>
-          <optgroup label="云端（需 key）">
-            <option value="cloud-realtime">云端流式（阿里云百炼，逐字丝滑）</option>
-            <option value="cloud">云端按段（如 MiMo mimo-v2.5-asr）</option>
+          <optgroup label={t.settings.asrCloudGroup}>
+            <option value="cloud-realtime">{t.settings.asrCloudRealtime}</option>
+            <option value="cloud">{t.settings.asrCloudSeg}</option>
           </optgroup>
         </select>
       </div>
       {asrBackend === 'local-realtime' && (
         <div className="settings-row">
-          <label>本地流式模型（免 key，选完保存即用）</label>
+          <label>{t.settings.localRtModel}</label>
           <select value={rtLocalModel} onChange={(e) => setRtLocalModel(e.target.value)}>
-            {Object.entries(LOCAL_REALTIME_MODELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {LOCAL_REALTIME_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {name(m)}
               </option>
             ))}
           </select>
@@ -250,40 +288,42 @@ export function SettingsPanel({
       {asrBackend === 'cloud' && (
         <>
           <div className="settings-row">
-            <label>快速预设</label>
+            <label>{t.settings.cloudPreset}</label>
             <select
               value=""
               onChange={(e) => {
-                const p = CLOUD_ASR_PRESETS[e.target.value];
+                const p = CLOUD_ASR_PRESETS[Number(e.target.value)];
                 if (p) {
                   setCloudBaseUrl(p.baseUrl);
                   setCloudModel(p.model);
                 }
               }}
             >
-              <option value="">— 选择预设 —</option>
-              {Object.keys(CLOUD_ASR_PRESETS).map((k) => (
-                <option key={k} value={k}>
-                  {k}
+              <option value="">{t.settings.presetPick}</option>
+              {CLOUD_ASR_PRESETS.map((p, i) => (
+                <option key={p.model + p.baseUrl} value={i}>
+                  {name(p)}
                 </option>
               ))}
             </select>
           </div>
           <div className="settings-row">
-            <label>云端 ASR Base URL（MiMo: https://api.xiaomimimo.com/v1）</label>
+            <label>{t.settings.cloudBaseUrl}</label>
             <input value={cloudBaseUrl} onChange={(e) => setCloudBaseUrl(e.target.value)} spellCheck={false} />
           </div>
           <div className="settings-row">
-            <label>云端 ASR 模型（mimo-v2.5-asr）</label>
+            <label>{t.settings.cloudModel}</label>
             <input value={cloudModel} onChange={(e) => setCloudModel(e.target.value)} spellCheck={false} />
           </div>
           <div className="settings-row">
-            <label>云端 ASR API Key {keyState(settings.asr.cloud.apiKeySet)}</label>
+            <label>
+              {t.settings.cloudApiKey} {keyState(settings.asr.cloud.apiKeySet)}
+            </label>
             <input
               type="password"
               value={cloudApiKey}
               onChange={(e) => setCloudApiKey(e.target.value)}
-              placeholder={settings.asr.cloud.apiKeySet ? '留空则不修改' : ''}
+              placeholder={settings.asr.cloud.apiKeySet ? t.settings.keyKeepPlaceholder : ''}
             />
           </div>
         </>
@@ -291,90 +331,96 @@ export function SettingsPanel({
       {asrBackend === 'cloud-realtime' && (
         <>
           <div className="settings-row">
-            <label>快速预设</label>
+            <label>{t.settings.cloudPreset}</label>
             <select
               value=""
               onChange={(e) => {
-                const p = REALTIME_ASR_PRESETS[e.target.value];
+                const p = REALTIME_ASR_PRESETS[Number(e.target.value)];
                 if (p) {
                   setRtBaseUrl(p.baseUrl);
                   setRtModel(p.model);
                 }
               }}
             >
-              <option value="">— 选择预设 —</option>
-              {Object.keys(REALTIME_ASR_PRESETS).map((k) => (
-                <option key={k} value={k}>
-                  {k}
+              <option value="">{t.settings.presetPick}</option>
+              {REALTIME_ASR_PRESETS.map((p, i) => (
+                <option key={p.model + p.baseUrl} value={i}>
+                  {name(p)}
                 </option>
               ))}
             </select>
           </div>
           <div className="settings-row">
-            <label>云端流式 WebSocket 地址（wss://…/api-ws/v1/inference）</label>
+            <label>{t.settings.rtBaseUrl}</label>
             <input value={rtBaseUrl} onChange={(e) => setRtBaseUrl(e.target.value)} spellCheck={false} />
           </div>
           <div className="settings-row">
-            <label>云端流式模型（fun-asr-realtime / paraformer-realtime-v2）</label>
+            <label>{t.settings.rtModel}</label>
             <input value={rtModel} onChange={(e) => setRtModel(e.target.value)} spellCheck={false} />
           </div>
           <div className="settings-row">
-            <label>云端流式 API Key {keyState(settings.asr.realtime.apiKeySet)}</label>
+            <label>
+              {t.settings.rtApiKey} {keyState(settings.asr.realtime.apiKeySet)}
+            </label>
             <input
               type="password"
               value={rtApiKey}
               onChange={(e) => setRtApiKey(e.target.value)}
-              placeholder={settings.asr.realtime.apiKeySet ? '留空则不修改' : 'sk-…'}
+              placeholder={settings.asr.realtime.apiKeySet ? t.settings.keyKeepPlaceholder : 'sk-…'}
             />
           </div>
         </>
       )}
       <div className="settings-row">
-        <label>转录语言（本地后端用；云端一般自动识别）</label>
+        <label>{t.settings.asrLanguage}</label>
         <select value={language} onChange={(e) => setLanguage(e.target.value as AsrLanguage)}>
-          <option value="auto">自动检测（推荐）</option>
-          <option value="chinese">中文</option>
-          <option value="english">英文</option>
+          <option value="auto">{t.settings.asrLangAuto}</option>
+          <option value="chinese">{t.settings.asrLangZh}</option>
+          <option value="english">{t.settings.asrLangEn}</option>
         </select>
       </div>
 
-      <div className="settings-section">外观</div>
+      <div className="settings-section">{t.settings.appearanceSection}</div>
       <div className="settings-row">
-        <label>主题</label>
+        <label>{t.settings.uiLang}</label>
+        <select value={uiLang} onChange={(e) => setUiLang(e.target.value as UiLang)}>
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <div className="settings-row">
+        <label>{t.settings.theme}</label>
         <select value={theme} onChange={(e) => setTheme(e.target.value as ThemeMode)}>
-          <option value="dark">深色</option>
-          <option value="light">浅色</option>
-          <option value="system">跟随系统</option>
+          <option value="dark">{t.settings.themeDark}</option>
+          <option value="light">{t.settings.themeLight}</option>
+          <option value="system">{t.settings.themeSystem}</option>
         </select>
       </div>
       <div className="settings-row">
-        <label>答案字号（只影响右栏答案正文）</label>
+        <label>{t.settings.fontScaleLabel}</label>
         <select value={fontScale} onChange={(e) => setFontScale(e.target.value as FontScale)}>
-          <option value="small">小（13px）</option>
-          <option value="medium">中（16px，默认）</option>
-          <option value="large">大（19px）</option>
+          <option value="small">{t.settings.fontSmall}</option>
+          <option value="medium">{t.settings.fontMedium}</option>
+          <option value="large">{t.settings.fontLarge}</option>
         </select>
       </div>
 
-      <div className="settings-section">其他</div>
-      <div className="settings-hint">
-        麦克风开关/设备、答语言、多模态切换都在标题栏；简历/岗位JD 在右栏「📄简历」「📋JD」按会话导入（支持
-        docx/pdf）。
-      </div>
+      <div className="settings-section">{t.settings.otherSection}</div>
+      <div className="settings-hint">{t.settings.otherHint}</div>
       <div className="settings-row">
-        <label>呼出/隐藏快捷键</label>
+        <label>{t.settings.hotkeyToggle}</label>
         <input value={hotkey} onChange={(e) => setHotkey(e.target.value)} spellCheck={false} />
       </div>
       <div className="settings-row">
-        <label>截图快捷键（框选截图问答，如 Control+Shift+S）</label>
+        <label>{t.settings.hotkeyShot}</label>
         <input value={hotkeyShot} onChange={(e) => setHotkeyShot(e.target.value)} spellCheck={false} />
       </div>
       <div className="settings-actions">
         <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>
-          {saving ? '保存中…' : '保存'}
+          {saving ? t.settings.saving : t.settings.save}
         </button>
         <button className="btn" onClick={onClose}>
-          取消
+          {t.settings.cancel}
         </button>
       </div>
     </div>

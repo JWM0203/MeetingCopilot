@@ -32,7 +32,8 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 - 🎧 **Hears the other side directly — no meeting bot.** Windows captures system loopback audio. macOS uses a selectable audio input (choose a virtual device such as BlackHole for meeting/system audio). An independent microphone channel transcribes your own voice separately.
 - ⚡ **Streaming ASR with 4 switchable backends** — local FunASR streaming (default: free, private; the Python sidecar is auto-spawned and reaped by the app), local Whisper turbo (offline fallback, DirectML GPU), Alibaba Cloud `fun-asr-realtime` (word-by-word cloud streaming), MiMo per-segment. Live gray partial subtitles appear while speech is still in progress.
-- 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
+- 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle (`A:EN`) and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
+- 🌐 **Fully English or Chinese interface** — every label, tooltip, dialog and status message is available in both languages. Switch under *Settings → Appearance → UI Language*; first launch follows your OS language automatically. UI language and answer language are independent, so you can run an English UI while reading Chinese answers, or vice versa.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
 - 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing is local and deterministic, nothing gets uploaded. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
@@ -43,7 +44,13 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 | Dark | Light |
 |---|---|
-| ![dark theme](docs/main-dark.png) | ![light theme](docs/main-light.png) |
+| ![dark theme, English UI](docs/main-dark-en.png) | ![light theme, English UI](docs/main-light-en.png) |
+
+### One click between the English and Chinese UI
+
+![Switching the UI language from Chinese to English](docs/language-switch.gif)
+
+*Settings → Appearance → UI Language: the whole interface — title bar, panels, tooltips, dialogs — flips instantly. The screenshots above show the English UI; the Chinese one is in [README.zh-CN.md](README.zh-CN.md).*
 
 ### Bilingual in one session
 
@@ -76,9 +83,9 @@ npm start          # cross-platform; Windows can also use start.bat
 
 First run:
 
-1. Open **⚙ Settings** → pick the *DeepSeek* preset → paste your API key → save.
+1. Open **⚙ Settings** → pick the *DeepSeek* preset → paste your API key → save. (The UI follows your OS language; switch it any time under *Appearance → UI Language*.)
 2. Pick an ASR backend (see below). The default *local streaming FunASR* needs a one-time Python env; cloud backends only need a key.
-3. Press **▶** — everything the other side says appears on the left. Click **⚡答** on any bubble, or enable **持续答** so questions are answered automatically.
+3. Press **▶ Start** — everything the other side says appears on the left. Click **⚡Ans** on any bubble, or enable **Auto** so questions are answered automatically.
 4. Import your resume / JD via **📄 / 📋** so answers are grounded in your real experience.
 
 > 🇨🇳 If npm / Electron downloads are slow in China, create a `.npmrc` containing
@@ -136,7 +143,7 @@ Place [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx
 - **Aliyun DashScope**: endpoint `wss://dashscope.aliyuncs.com/api-ws/v1/inference`, model `fun-asr-realtime` or `paraformer-realtime-v2`.
 - **MiMo**: `https://api.xiaomimimo.com/v1`, model `mimo-v2.5-asr`.
 
-![settings panel](docs/settings.png)
+![settings panel, English UI](docs/settings-en.png)
 
 ## Development
 

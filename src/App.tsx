@@ -22,6 +22,7 @@ import { TranscriptPanel } from './components/TranscriptPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
+import { I18nProvider, getDict, type Dict } from './i18n';
 
 export interface AsrUiState {
   phase: 'loading' | 'ready' | 'error';
@@ -47,21 +48,21 @@ const HISTORY_TURNS = 8;
 let seq = 0;
 const uid = (p: string) => `${p}-${++seq}-${Date.now()}`;
 
-function newSession(name?: string): StoredSession {
-  return { id: uid('s'), name: name ?? '新会话', createdAt: Date.now(), turns: [], segments: [] };
+function newSession(name: string): StoredSession {
+  return { id: uid('s'), name, createdAt: Date.now(), turns: [], segments: [] };
 }
 
 /** legacy single-slot KB → resume slot (dual-slot material, P0-2) */
-function migrateKbSlots(s: StoredSession): StoredSession {
+function migrateKbSlots(s: StoredSession, fallbackName: string): StoredSession {
   if (!s.kbText || s.resumeText) return s;
   const { kbName, kbText, ...rest } = s;
-  return { ...rest, resumeName: kbName ?? '资料', resumeText: kbText };
+  return { ...rest, resumeName: kbName ?? fallbackName, resumeText: kbText };
 }
 
 /** first-question topic → a short session title */
-function deriveName(text: string): string {
+function deriveName(text: string, fallback: string): string {
   const t = text.replace(/\s+/g, ' ').trim();
-  if (!t) return '新会话';
+  if (!t) return fallback;
   return t.length > 14 ? t.slice(0, 14) + '…' : t;
 }
 
@@ -89,6 +90,11 @@ export function App() {
   const currentIdRef = useRef<string>('');
   const answerLangRef = useRef<AnswerLang>('chinese');
   const loaded = useRef(false);
+
+  // UI language: settings-driven; ref mirror so stable callbacks stay fresh
+  const t = getDict(settings?.ui.lang);
+  const tRef = useRef<Dict>(t);
+  tRef.current = t;
 
   if (!loopbackRef.current) loopbackRef.current = new LoopbackCapture();
   if (!themInputRef.current) themInputRef.current = new MicCapture();
@@ -169,7 +175,9 @@ export function App() {
   const maybeTitle = useCallback(
     (sid: string, text?: string) => {
       if (!text?.trim()) return;
-      patchSession(sid, (s) => (s.titled ? s : { ...s, name: deriveName(text), titled: true }));
+      patchSession(sid, (s) =>
+        s.titled ? s : { ...s, name: deriveName(text, tRef.current.app.newSession), titled: true },
+      );
     },
     [patchSession],
   );
@@ -192,7 +200,7 @@ export function App() {
           }
         }
       }
-      const label = question ?? (mode === 'continuous' ? '对方最新发言' : '');
+      const label = question ?? (mode === 'continuous' ? tRef.current.app.latestRemark : '');
       appendTurn(sid, { id: requestId, kind: mode, label, text: '', status: 'streaming' });
       if (mode === 'segment' || mode === 'free') maybeTitle(sid, text);
       const material = mode === 'translate' ? {} : currentMaterial();
@@ -219,11 +227,11 @@ export function App() {
       appendTurn(sid, {
         id: requestId,
         kind: 'vision',
-        label: question || '解读当前截图',
+        label: question || tRef.current.app.readShot,
         text: '',
         status: 'streaming',
       });
-      maybeTitle(sid, question || '截图提问');
+      maybeTitle(sid, question || tRef.current.app.shotQuestion);
       const m = currentMaterial();
       const background = [m.resume, m.jd].filter(Boolean).join('\n\n') || undefined;
       window.mc.shotAsk({ requestId, question, background, imageDataUrl });
@@ -248,11 +256,16 @@ export function App() {
         // heal legacy duplicate segment ids (worker counter used to reset per
         // engine rebuild — translations then landed on multiple bubbles)
         setSessions(
-          f.sessions.map((s) => migrateKbSlots({ ...s, segments: reindexSegments(s.segments ?? []) })),
+          f.sessions.map((s) =>
+            migrateKbSlots(
+              { ...s, segments: reindexSegments(s.segments ?? []) },
+              tRef.current.app.legacyKbName,
+            ),
+          ),
         );
         setCurrentId(f.currentId && f.sessions.some((s) => s.id === f.currentId) ? f.currentId : f.sessions[0].id);
       } else {
-        const s = newSession('会话 1');
+        const s = newSession(tRef.current.app.sessionN(1));
         setSessions([s]);
         setCurrentId(s.id);
       }
@@ -418,7 +431,7 @@ export function App() {
       setCapturing(true);
       prewarm(true); // ▶ = the meeting starts — build the KV prefix cache now
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: `采集启动失败: ${(e as Error).message}` }));
+      setAsr((s) => ({ ...s, lastError: tRef.current.app.captureStartFail((e as Error).message) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -446,7 +459,7 @@ export function App() {
       setMicActive(true);
       if (mics.length === 0) void listMics().then(setMics);
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: `麦克风启动失败: ${(e as Error).message}` }));
+      setAsr((s) => ({ ...s, lastError: tRef.current.app.micStartFail((e as Error).message) }));
     }
   }, [settings, mics]);
 
@@ -471,7 +484,7 @@ export function App() {
       window.mc
         .translate(seg.text)
         .then((zh) => setSeg(seg.id, { translation: zh, translating: false }))
-        .catch(() => setSeg(seg.id, { translation: '（翻译失败）', translating: false }));
+        .catch(() => setSeg(seg.id, { translation: tRef.current.app.translateFail, translating: false }));
     },
     [setSeg],
   );
@@ -551,7 +564,7 @@ export function App() {
   );
 
   const createSession = useCallback(() => {
-    const s = newSession(`会话 ${sessionsRef.current.length + 1}`);
+    const s = newSession(tRef.current.app.sessionN(sessionsRef.current.length + 1));
     setSessions((list) => [...list, s]);
     setCurrentId(s.id);
   }, []);
@@ -560,7 +573,7 @@ export function App() {
     setSessions((list) => {
       const next = list.filter((s) => s.id !== id);
       if (next.length === 0) {
-        const s = newSession('会话 1');
+        const s = newSession(tRef.current.app.sessionN(1));
         setCurrentId(s.id);
         return [s];
       }
@@ -582,7 +595,7 @@ export function App() {
       if (!r) return;
       if (!r.text.trim()) {
         // deterministic parsers return '' for scanned/image-only PDFs
-        setKbNotice(`「${r.name}」没有可提取的文本（扫描版 PDF？请换文字版或 .md/.txt）`);
+        setKbNotice(tRef.current.app.kbNoText(r.name));
         return;
       }
       setKbNotice(null);
@@ -625,6 +638,7 @@ export function App() {
     !!settings?.vision.apiKeySet;
 
   return (
+    <I18nProvider lang={settings?.ui.lang}>
     <div className="app">
       <header className="titlebar">
         <span className="brand">MeetingCopilot</span>
@@ -636,23 +650,23 @@ export function App() {
             title={
               captureKindForPlatform(window.mc.platform) === 'loopback'
                 ? capturing
-                  ? '停止采集系统声音'
-                  : '开始采集系统声音（对方声音）'
+                  ? t.titlebar.stopTitle
+                  : t.titlebar.startTitle
                 : capturing
-                  ? '停止采集对方音频输入'
-                  : '开始采集所选音频输入（macOS 系统声音需虚拟音频设备）'
+                  ? t.titlebar.stopInputTitle
+                  : t.titlebar.startInputTitle
             }
           >
-            {capturing ? '● 停止' : '▶ 开始'}
+            {capturing ? t.titlebar.stop : t.titlebar.start}
           </button>
           {captureKindForPlatform(window.mc.platform) === 'input' && mics.length > 0 && (
             <select
               className="mic-select"
               value={settings?.audio.themDeviceId ?? ''}
               onChange={(e) => void selectThemInput(e.target.value)}
-              title="对方音频输入；采集会议系统声音时请选择 BlackHole 等虚拟设备"
+              title={t.titlebar.themDeviceTitle}
             >
-              <option value="">默认输入</option>
+              <option value="">{t.titlebar.themDeviceDefault}</option>
               {mics.map((m) => (
                 <option key={m.deviceId} value={m.deviceId}>
                   {m.label.slice(0, 14)}
@@ -663,38 +677,38 @@ export function App() {
           <button
             className={continuous ? 'btn btn-on' : 'btn'}
             onClick={() => setContinuous((v) => !v)}
-            title="持续模式：对方提问时自动追加一条回答建议（只在像问题时触发）"
+            title={t.titlebar.continuousTitle}
           >
-            持续答
+            {t.titlebar.continuous}
           </button>
           <button
             className={settings?.llm.answerWithVision ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleAnswerModel()}
-            title="回答用的模型：纯文本大模型（快） ⇄ 多模态模型（可截图问答）"
+            title={t.titlebar.modelTitle}
           >
-            {settings?.llm.answerWithVision ? '多模态' : '纯文本'}
+            {settings?.llm.answerWithVision ? t.titlebar.vision : t.titlebar.textOnly}
           </button>
-          <button className="btn" onClick={() => void toggleAnswerLang()} title="AI 回答语言：中/英切换">
-            答:{settings?.llm.answerLang === 'english' ? 'EN' : '中'}
+          <button className="btn" onClick={() => void toggleAnswerLang()} title={t.titlebar.answerLangTitle}>
+            {t.titlebar.answerLang(settings?.llm.answerLang === 'english')}
           </button>
           <button
             className={micActive ? 'btn btn-live' : 'btn'}
             onClick={() => void toggleMicCapture()}
-            title="麦克风：独立转录你自己的声音（与系统声音互不影响；建议戴耳机避免扬声器回声）"
+            title={t.titlebar.micTitle}
           >
-            {micActive ? '🎤录音中' : '🎤麦克风'}
+            {micActive ? t.titlebar.micOn : t.titlebar.micOff}
           </button>
           {micActive && mics.length > 0 && (
             <select
               className="mic-select"
               value={settings?.audio.micDeviceId ?? ''}
               onChange={(e) => void selectMic(e.target.value)}
-              title="麦克风设备"
+              title={t.titlebar.micDeviceTitle}
             >
-              <option value="">默认麦</option>
+              <option value="">{t.titlebar.micDefault}</option>
               {mics.map((m) => (
                 <option key={m.deviceId} value={m.deviceId}>
-                  {m.label.slice(0, 10)}
+                  {(m.label || t.titlebar.micDefault).slice(0, 10)}
                 </option>
               ))}
             </select>
@@ -704,22 +718,22 @@ export function App() {
             onClick={() => void toggleStealth()}
             title={
               window.mc.platform === 'darwin'
-                ? '采集保护：macOS 新版 ScreenCaptureKit 仍可能捕获窗口，不能保证完全隐身'
-                : '隐身：在系统支持的录屏/共享/截图中排除窗口'
+                ? t.titlebar.stealthMacTitle
+                : t.titlebar.stealthTitle
             }
           >
-            隐身{settings?.ui.stealth ? '开' : '关'}
+            {t.titlebar.stealth(!!settings?.ui.stealth)}
           </button>
-          <button className="btn" onClick={() => setShowHud((v) => !v)} title="延迟 HUD">
+          <button className="btn" onClick={() => setShowHud((v) => !v)} title={t.titlebar.hudTitle}>
             HUD
           </button>
-          <button className="btn" onClick={() => setShowSettings((v) => !v)} title="设置">
+          <button className="btn" onClick={() => setShowSettings((v) => !v)} title={t.titlebar.settingsTitle}>
             ⚙
           </button>
-          <button className="btn" onClick={() => window.mc.hide()} title="隐藏窗口（快捷键再次呼出）">
+          <button className="btn" onClick={() => window.mc.hide()} title={t.titlebar.hideTitle}>
             —
           </button>
-          <button className="btn btn-close" onClick={() => window.mc.quit()} title="退出">
+          <button className="btn btn-close" onClick={() => window.mc.quit()} title={t.titlebar.quitTitle}>
             ✕
           </button>
         </div>
@@ -770,5 +784,6 @@ export function App() {
 
       <StatusBar asr={asr} capturing={capturing} hud={showHud ? hud : undefined} />
     </div>
+    </I18nProvider>
   );
 }

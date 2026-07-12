@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KbSlot, StoredSession } from '../../shared/protocol';
+import { useT } from '../i18n';
 
 export type TurnKind = 'segment' | 'continuous' | 'free' | 'translate' | 'vision';
 
@@ -11,14 +12,6 @@ export interface AnswerTurn {
   status: 'streaming' | 'done' | 'error';
   error?: string;
 }
-
-const KIND_TAG: Record<TurnKind, string> = {
-  segment: '答',
-  continuous: '持续',
-  free: '问',
-  translate: '译',
-  vision: '截图',
-};
 
 /**
  * 智能体 conversation panel (R4) with a multi-session bar. Answers ACCUMULATE
@@ -68,6 +61,7 @@ export function AnswerSession({
   onFreeAsk: (question: string) => void;
   onShotAsk: (question: string, imageDataUrl?: string) => void;
 }) {
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -119,7 +113,7 @@ export function AnswerSession({
             className="session-select"
             value={currentId}
             onChange={(e) => onSwitch(e.target.value)}
-            title="切换会话"
+            title={t.answer.switchTitle}
           >
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -134,14 +128,14 @@ export function AnswerSession({
             setNameDraft(currentName);
             setEditing(true);
           }}
-          title="重命名当前会话"
+          title={t.answer.renameTitle}
         >
           ✎
         </button>
-        <button className="btn btn-sm" onClick={onNew} title="新建会话">
+        <button className="btn btn-sm" onClick={onNew} title={t.answer.newTitle}>
           ＋
         </button>
-        <button className="btn btn-sm" onClick={() => onDelete(currentId)} title="删除当前会话">
+        <button className="btn btn-sm" onClick={() => onDelete(currentId)} title={t.answer.deleteTitle}>
           🗑
         </button>
         <button
@@ -149,77 +143,70 @@ export function AnswerSession({
           onClick={() => onPickKb('resume')}
           title={
             resumeChars > 0
-              ? `简历：${resumeName}（${resumeChars}字）点击更换（.md/.txt/.docx/.pdf）`
-              : '导入我的简历（.md/.txt/.docx/.pdf）'
+              ? t.answer.resumeSetTitle(resumeName ?? '', resumeChars)
+              : t.answer.resumeEmptyTitle
           }
         >
-          📄{resumeChars > 0 ? resumeName ?? '简历' : '简历'}
+          📄{resumeChars > 0 ? resumeName ?? t.answer.resume : t.answer.resume}
         </button>
         {resumeChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('resume')} title="移除简历">
+          <button className="btn btn-sm" onClick={() => onClearKb('resume')} title={t.answer.resumeRemoveTitle}>
             ×
           </button>
         )}
         <button
           className={jdChars > 0 ? 'btn btn-sm btn-on' : 'btn btn-sm'}
           onClick={() => onPickKb('jd')}
-          title={
-            jdChars > 0
-              ? `岗位JD：${jdName}（${jdChars}字）点击更换（.md/.txt/.docx/.pdf）`
-              : '导入岗位JD（.md/.txt/.docx/.pdf）'
-          }
+          title={jdChars > 0 ? t.answer.jdSetTitle(jdName ?? '', jdChars) : t.answer.jdEmptyTitle}
         >
-          📋{jdChars > 0 ? jdName ?? 'JD' : 'JD'}
+          📋{jdChars > 0 ? jdName ?? t.answer.jd : t.answer.jd}
         </button>
         {jdChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('jd')} title="移除岗位JD">
+          <button className="btn btn-sm" onClick={() => onClearKb('jd')} title={t.answer.jdRemoveTitle}>
             ×
           </button>
         )}
         <span className="session-spacer" />
-        <button className="btn btn-sm" onClick={onClear} title="清空本会话对话">
-          清空
+        <button className="btn btn-sm" onClick={onClear} title={t.answer.clearTitle}>
+          {t.answer.clear}
         </button>
       </header>
       {notice && <div className="kb-notice">{notice}</div>}
       <div className="session" ref={boxRef} onScroll={onScroll}>
         {turns.length === 0 ? (
           <div className="pane-empty">
-            点转录里对方那句的「⚡答」让 AI 帮你回答；或在下方随便问。答案会在这里逐条累积。
-            {resumeChars === 0 && '\n\n提示：点上方「📄简历」「📋JD」导入资料（支持 docx/pdf），回答会更贴合你。'}
+            {t.answer.empty}
+            {resumeChars === 0 && t.answer.emptyKbHint}
           </div>
         ) : (
-          turns.map((t) => (
-            <div key={t.id} className={`turn turn-${t.kind}`}>
+          turns.map((turn) => (
+            <div key={turn.id} className={`turn turn-${turn.kind}`}>
               <div className="turn-head">
-                <span className="turn-tag">{KIND_TAG[t.kind]}</span>
-                <span className="turn-label" title={t.label}>
-                  {t.label}
+                <span className="turn-tag">{t.answer.kindTag[turn.kind]}</span>
+                <span className="turn-label" title={turn.label}>
+                  {turn.label}
                 </span>
-                {t.status === 'streaming' ? (
-                  <button className="btn btn-sm" onClick={() => onCancel(t.id)}>
-                    停
+                {turn.status === 'streaming' ? (
+                  <button className="btn btn-sm" onClick={() => onCancel(turn.id)}>
+                    {t.answer.stop}
                   </button>
                 ) : (
                   <button
                     className="btn btn-sm"
-                    onClick={() => void navigator.clipboard.writeText(t.text)}
-                    title="复制"
+                    onClick={() => void navigator.clipboard.writeText(turn.text)}
+                    title={t.answer.copyTitle}
                   >
-                    复制
+                    {t.answer.copy}
                   </button>
                 )}
               </div>
               <div className="turn-body">
-                {t.status === 'error' ? (
-                  <span className="answer-error">{t.error}</span>
+                {turn.status === 'error' ? (
+                  <span className="answer-error">{turn.error}</span>
                 ) : (
                   <>
-                    {t.text ||
-                      (t.kind === 'vision'
-                        ? '识别中…（视觉模型较慢，约 5-10 秒）'
-                        : '生成中…（深度/思考模型会先思考几秒）')}
-                    {t.status === 'streaming' && <span className="cursor">▍</span>}
+                    {turn.text || (turn.kind === 'vision' ? t.answer.visionWaiting : t.answer.genWaiting)}
+                    {turn.status === 'streaming' && <span className="cursor">▍</span>}
                   </>
                 )}
               </div>
@@ -233,15 +220,15 @@ export function AnswerSession({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit();
           }}
-          placeholder="随便问：基于当前对话向 AI 提问…"
+          placeholder={t.answer.freePlaceholder}
         />
         <button className="btn btn-primary" onClick={submit}>
-          问
+          {t.answer.ask}
         </button>
         {visionReady && (
           <button
             className="btn"
-            title="截图框选问视觉模型（拉框选区域，输入框内容作为问题）"
+            title={t.answer.shotTitle}
             onClick={async () => {
               const q = inputRef.current?.value.trim() ?? '';
               const img = await window.mc.pickRegion();
