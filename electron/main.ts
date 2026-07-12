@@ -37,7 +37,7 @@ import {
   buildVisionMessages,
   clampMemo,
 } from './llm/prompts';
-import type { PublicSettings } from '../shared/protocol';
+import type { PublicSettings, UiLang } from '../shared/protocol';
 import {
   IPC,
   type AsrEvent,
@@ -45,13 +45,14 @@ import {
   type LlmEvent,
   type SettingsPatch,
 } from '../shared/protocol';
+import { mainStrings } from './uiStrings';
 
 const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
 
 /** Region-selection overlay: shows the captured screen as an opaque bg (so a
  * content-protected window never renders black locally) and lets the user drag
  * a rectangle. Uses window.mc from the shared preload. */
-const REGION_OVERLAY_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+const regionOverlayHtml = (tip: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;overflow:hidden;cursor:crosshair;user-select:none}
 #img{position:fixed;inset:0;width:100vw;height:100vh;object-fit:fill}
 #dim{position:fixed;inset:0;background:rgba(0,0,0,0.35)}
@@ -59,7 +60,7 @@ html,body{margin:0;height:100%;overflow:hidden;cursor:crosshair;user-select:none
 #tip{position:fixed;top:14px;left:50%;transform:translateX(-50%);color:#fff;background:rgba(0,0,0,0.65);padding:6px 14px;border-radius:8px;font:13px 'Microsoft YaHei',sans-serif;z-index:9}
 </style></head><body>
 <img id="img"/><div id="dim"></div><div id="sel"></div>
-<div id="tip">拖动框选要识别的区域 · Esc 取消</div>
+<div id="tip">${tip}</div>
 <script>
 (async()=>{try{const u=await window.mc.regionImage();if(u){document.getElementById('img').src=u;}}catch(e){}})();
 let sx,sy,drag=false;const sel=document.getElementById('sel'),dim=document.getElementById('dim');
@@ -73,6 +74,10 @@ addEventListener('keydown',e=>{if(e.key==='Escape')window.mc.regionCancel();});
 
 app.setName('MeetingCopilot');
 
+// E2E/demo hook: run against an isolated profile — must precede the
+// single-instance lock so a test instance never collides with a real one
+if (process.env.MC_USERDATA) app.setPath('userData', process.env.MC_USERDATA);
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -84,8 +89,12 @@ function bootstrap(): void {
   let settings: SettingsStore;
   let knowledge: KnowledgeStore;
   let sessionStore: SessionStore;
+  let osLang: UiLang = 'zh';
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
+
+  /** main-process strings in the current UI language */
+  const T = () => mainStrings(settings.data.ui.lang, osLang);
 
   /** getPublic() + real knowledge char count (KB lives outside settings.json) */
   function publicSettings(): PublicSettings {
@@ -138,7 +147,7 @@ function bootstrap(): void {
         await sidecar.ensureRunning(port, app.getAppPath(), opts.cloud?.model);
         console.log(`[sidecar] local funasr ready on :${port}`);
       } catch (e) {
-        const message = `本地 FunASR 引擎启动失败：${(e as Error).message}`;
+        const message = T().sidecarFail((e as Error).message);
         console.error(`[sidecar] ${message}`);
         win?.webContents.send(IPC.asrEvent, { kind: 'error', message, fatal: true });
         return;
@@ -254,7 +263,9 @@ function bootstrap(): void {
   }
 
   app.whenReady().then(() => {
-    settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), cipher());
+    // users who never chose a UI language get their OS language (zh → zh, else en)
+    osLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), cipher(), osLang);
     knowledge = new KnowledgeStore(join(app.getPath('userData'), 'knowledge.md'));
     sessionStore = new SessionStore(join(app.getPath('userData'), 'sessions.json'));
 
@@ -379,7 +390,7 @@ function bootstrap(): void {
     });
     ipcMain.handle(IPC.knowledgeImport, async () => {
       const r = await dialog.showOpenDialog({
-        title: '导入个人知识库（.md / .txt）',
+        title: T().kbImportTitle,
         filters: [{ name: 'Markdown/Text', extensions: ['md', 'markdown', 'txt'] }],
         properties: ['openFile'],
       });
@@ -398,8 +409,8 @@ function bootstrap(): void {
     });
     ipcMain.handle(IPC.knowledgePick, async (_e, slot: 'resume' | 'jd' = 'resume') => {
       const r = await dialog.showOpenDialog({
-        title: slot === 'jd' ? '导入岗位JD（md/txt/docx/pdf）' : '导入我的简历（md/txt/docx/pdf）',
-        filters: [{ name: '文档', extensions: [...DOC_EXTENSIONS] }],
+        title: slot === 'jd' ? T().pickJdTitle : T().pickResumeTitle,
+        filters: [{ name: T().docFilter, extensions: [...DOC_EXTENSIONS] }],
         properties: ['openFile'],
       });
       if (r.canceled || !r.filePaths[0]) return null;
@@ -478,7 +489,7 @@ function bootstrap(): void {
           }
           regionWin = null;
         });
-        void ov.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(REGION_OVERLAY_HTML));
+        void ov.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(regionOverlayHtml(T().regionTip)));
       });
 
       const img = pendingRegionImage;
@@ -511,7 +522,7 @@ function bootstrap(): void {
       const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
       const apiKey = settings.getLlmApiKey();
       if (!apiKey) {
-        sendEv({ requestId: payload.requestId, kind: 'error', message: '未设置 API Key，请在设置里填入后重试' });
+        sendEv({ requestId: payload.requestId, kind: 'error', message: T().noApiKey });
         return;
       }
       const ac = new AbortController();
@@ -617,7 +628,7 @@ function bootstrap(): void {
     // no history pollution). Uses the fast text model (deepseek-chat).
     ipcMain.handle(IPC.translateText, async (_e, text: string) => {
       const apiKey = settings.getLlmApiKey();
-      if (!apiKey) throw new Error('未设置 API Key');
+      if (!apiKey) throw new Error(T().noApiKeyShort);
       const r = await chatStream(
         { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
         buildTranslateMessages(text),
@@ -638,7 +649,7 @@ function bootstrap(): void {
         sendEv({
           requestId: payload.requestId,
           kind: 'error',
-          message: '未配置视觉模型：请在设置里填 Vision Base URL / 模型 / Key（如 MiMo / Gemini）',
+          message: T().noVision,
         });
         return;
       }
