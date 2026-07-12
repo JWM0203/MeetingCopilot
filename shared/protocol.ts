@@ -75,6 +75,8 @@ export interface SettingsFile {
     theme: ThemeMode;
   };
   audio: {
+    /** input used for the other-party channel on platforms without loopback */
+    themDeviceId?: string;
     /** also capture the microphone (dual-channel transcription: 对方 + 我) */
     micEnabled: boolean;
     /** chosen mic device id ('' / undefined = system default) */
@@ -111,7 +113,7 @@ export interface PublicSettings {
     fontScale: FontScale;
     theme: ThemeMode;
   };
-  audio: { micEnabled: boolean; micDeviceId?: string };
+  audio: { themDeviceId?: string; micEnabled: boolean; micDeviceId?: string };
 }
 
 /** Renderer -> main settings update. Plaintext apiKey in transit only. */
@@ -139,7 +141,7 @@ export interface SettingsPatch {
     fontScale?: FontScale;
     theme?: ThemeMode;
   };
-  audio?: { micEnabled?: boolean; micDeviceId?: string };
+  audio?: { themDeviceId?: string; micEnabled?: boolean; micDeviceId?: string };
 }
 
 // ---------- ASR events (main -> renderer) ----------

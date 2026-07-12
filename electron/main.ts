@@ -15,6 +15,10 @@ import {
 } from 'electron';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import {
+  captureKindForPlatform,
+  whisperExecutionProvidersForPlatform,
+} from '../shared/platform';
 import { AsrHost } from './asrHost';
 import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
@@ -118,7 +122,7 @@ function bootstrap(): void {
         | 'cloud-realtime',
       modelsDir: a.modelsDir ?? join(app.getPath('userData'), 'models'),
       modelId: MODEL_ID,
-      ep: ['dml', 'cpu'] as ('dml' | 'cpu')[],
+      ep: whisperExecutionProvidersForPlatform(process.platform),
       language: a.language,
       cloud,
     };
@@ -131,7 +135,7 @@ function bootstrap(): void {
     const port = opts.backend === 'cloud-realtime' ? parseLocalWsPort(opts.cloud?.baseUrl) : null;
     if (port) {
       try {
-        await sidecar.ensureRunning(port, app.getAppPath());
+        await sidecar.ensureRunning(port, app.getAppPath(), opts.cloud?.model);
         console.log(`[sidecar] local funasr ready on :${port}`);
       } catch (e) {
         const message = `本地 FunASR 引擎启动失败：${(e as Error).message}`;
@@ -140,7 +144,7 @@ function bootstrap(): void {
         return;
       }
     } else {
-      sidecar.stop(); // switched away from local — reclaim its RAM/VRAM
+      await sidecar.stop(); // switched away from local — reclaim its RAM/VRAM
     }
     asr.start(opts);
   }
@@ -152,7 +156,9 @@ function bootstrap(): void {
   };
 
   function cipher(): SecretCipher {
-    return safeCipher.available() ? safeCipher : plainCipher;
+    if (safeCipher.available()) return safeCipher;
+    console.warn('[security] OS secret storage unavailable; API keys will only be obfuscated');
+    return plainCipher;
   }
 
   function registerHotkeys(): void {
@@ -252,16 +258,19 @@ function bootstrap(): void {
     knowledge = new KnowledgeStore(join(app.getPath('userData'), 'knowledge.md'));
     sessionStore = new SessionStore(join(app.getPath('userData'), 'sessions.json'));
 
-    // Whole-system loopback audio for getDisplayMedia (PLAN §4.2, R1).
-    session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-      desktopCapturer
-        .getSources({ types: ['screen'] })
-        .then((sources) => callback({ video: sources[0], audio: 'loopback' }))
-        .catch((e) => {
-          console.error('[main] display media handler failed:', e);
-          callback({});
-        });
-    });
+    // Electron's `audio: loopback` display-media source is Windows-only.
+    // macOS/Linux use a selectable ordinary input in the renderer instead.
+    if (captureKindForPlatform(process.platform) === 'loopback') {
+      session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ['screen'] })
+          .then((sources) => callback({ video: sources[0], audio: 'loopback' }))
+          .catch((e) => {
+            console.error('[main] display media handler failed:', e);
+            callback({});
+          });
+      });
+    }
 
     // ---- IPC ----
     ipcMain.on(IPC.capturePcm, (_e, buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me') => {
@@ -668,6 +677,9 @@ function bootstrap(): void {
         console.log(`[asr] #${ev.id} (${ev.lang ?? '?'}, ${ev.audioMs}ms audio, e2e ${e2e}ms) ${ev.text}`);
       } else if (ev.kind === 'ready') {
         console.log(`[asr] ready ep=${ev.ep} load=${ev.loadMs}ms warm=${ev.warmMs}ms gpuSuspect=${ev.gpuSuspect}`);
+        if (process.env.MC_E2E_QUIT_ON_ASR_READY === '1') {
+          setTimeout(() => app.quit(), 250);
+        }
       } else if (ev.kind === 'error') {
         console.error(`[asr] error (fatal=${ev.fatal}): ${ev.message}`);
       } else if (ev.kind === 'status') {
@@ -689,7 +701,7 @@ function bootstrap(): void {
   app.on('before-quit', () => {
     globalShortcut.unregisterAll();
     void asr.stop();
-    sidecar.stop();
+    void sidecar.stop();
   });
 
   app.on('window-all-closed', () => {

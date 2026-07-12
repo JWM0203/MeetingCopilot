@@ -1,4 +1,6 @@
 node_modules/
+.venv/
+__pycache__/
 out/
 dist/
 models/

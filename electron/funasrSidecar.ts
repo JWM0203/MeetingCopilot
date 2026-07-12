@@ -14,8 +14,58 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 const DEFAULT_PYTHON = 'C:\\ProgramData\\miniconda3\\envs\\funasr\\python.exe';
-/** both models load + GPU warm ≈ 60-90 s; first-ever run also downloads them */
-const READY_TIMEOUT_MS = 180_000;
+/** model load + warm; first-ever run also downloads the selected model */
+const READY_TIMEOUT_MS = 15 * 60_000;
+
+export function pythonCandidates(
+  appRoot: string,
+  platform: string = process.platform,
+  explicit: string | undefined = process.env.MC_FUNASR_PYTHON,
+): string[] {
+  const venv =
+    platform === 'win32'
+      ? join(appRoot, '.venv', 'Scripts', 'python.exe')
+      : join(appRoot, '.venv', 'bin', 'python');
+  const candidates = [
+    explicit,
+    venv,
+    ...(platform === 'win32' ? [DEFAULT_PYTHON, 'python'] : ['python3', 'python']),
+  ].filter((v): v is string => !!v);
+  return [...new Set(candidates)];
+}
+
+async function canRunPython(candidate: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(candidate, ['--version'], { timeout: 5_000 }, (error) => resolve(!error));
+  });
+}
+
+export async function resolvePython(
+  candidates: string[],
+  probe: (candidate: string) => Promise<boolean> = canRunPython,
+): Promise<string> {
+  for (const candidate of candidates) {
+    if (await probe(candidate)) return candidate;
+  }
+  throw new Error(
+    `未找到可用 Python（已尝试 ${candidates.join(', ')}）；请创建 .venv 或设置 MC_FUNASR_PYTHON`,
+  );
+}
+
+export function sidecarModelArg(model: string | undefined): 'nano' | 'paraformer' {
+  return model?.toLowerCase().includes('paraformer') ? 'paraformer' : 'nano';
+}
+
+export type SidecarStopPlan =
+  | { kind: 'command'; file: string; args: string[] }
+  | { kind: 'signal'; pid: number; signal: NodeJS.Signals };
+
+export function sidecarStopPlan(platform: string, pid: number): SidecarStopPlan {
+  if (platform === 'win32') {
+    return { kind: 'command', file: 'taskkill', args: ['/pid', String(pid), '/T', '/F'] };
+  }
+  return { kind: 'signal', pid: -pid, signal: 'SIGTERM' };
+}
 
 /** ws://127.0.0.1:10097/... -> 10097; null for anything non-local (pure, tested) */
 export function parseLocalWsPort(url: string | undefined): number | null {
@@ -44,37 +94,42 @@ function portOpen(port: number, timeoutMs = 600): Promise<boolean> {
 export class FunasrSidecar {
   private proc: ChildProcess | null = null;
   private starting: Promise<void> | null = null;
+  private modelArg: 'nano' | 'paraformer' | null = null;
 
   /** make sure something serves the port; spawn the python sidecar if needed */
-  async ensureRunning(port: number, appRoot: string): Promise<void> {
+  async ensureRunning(port: number, appRoot: string, model?: string): Promise<void> {
+    const requestedModel = sidecarModelArg(model);
+    if (this.proc && this.modelArg !== requestedModel) await this.stop();
     if (await portOpen(port)) return; // manual instance or an earlier spawn
     if (!this.starting) {
-      this.starting = this.spawnAndWait(port, appRoot).finally(() => {
+      this.starting = this.spawnAndWait(port, appRoot, requestedModel).finally(() => {
         this.starting = null;
       });
     }
     return this.starting;
   }
 
-  private spawnAndWait(port: number, appRoot: string): Promise<void> {
-    const python = process.env.MC_FUNASR_PYTHON ?? DEFAULT_PYTHON;
+  private async spawnAndWait(
+    port: number,
+    appRoot: string,
+    modelArg: 'nano' | 'paraformer',
+  ): Promise<void> {
+    const python = await resolvePython(pythonCandidates(appRoot));
     const script = join(appRoot, 'tools', 'funasr_stream_server.py');
-    if (!existsSync(python)) {
-      return Promise.reject(
-        new Error(`未找到本地 ASR 运行环境 ${python}（需要 conda env "funasr"，或设 MC_FUNASR_PYTHON）`),
-      );
-    }
     if (!existsSync(script)) {
-      return Promise.reject(new Error(`未找到 ${script}`));
+      throw new Error(`未找到 ${script}`);
     }
-    console.log(`[sidecar] spawning local funasr on :${port} (models load can take ~1 min)`);
+    console.log(
+      `[sidecar] spawning local funasr model=${modelArg} on :${port} (models load can take ~1 min)`,
+    );
     return new Promise((resolve, reject) => {
       const proc = spawn(
         python,
-        [script, '--port', String(port), '--model', 'both', '--device', 'auto'],
-        { cwd: appRoot, windowsHide: true },
+        [script, '--port', String(port), '--model', modelArg, '--device', 'auto'],
+        { cwd: appRoot, windowsHide: true, detached: process.platform !== 'win32' },
       );
       this.proc = proc;
+      this.modelArg = modelArg;
       let settled = false;
       const settle = (fn: () => void) => {
         if (settled) return;
@@ -82,10 +137,13 @@ export class FunasrSidecar {
         clearTimeout(timer);
         fn();
       };
-      const timer = setTimeout(
-        () => settle(() => reject(new Error('本地 FunASR 引擎 180s 内未就绪（首次运行要下载模型，可稍后重试）'))),
-        READY_TIMEOUT_MS,
-      );
+      const timer = setTimeout(() => {
+        settle(() => {
+          void this.stop().finally(() =>
+            reject(new Error('本地 FunASR 引擎 15 分钟内未就绪（请检查模型下载和 Python 日志）')),
+          );
+        });
+      }, READY_TIMEOUT_MS);
       proc.stdout?.on('data', (d: Buffer) => {
         const s = d.toString();
         process.stdout.write(`[sidecar] ${s}`);
@@ -94,6 +152,7 @@ export class FunasrSidecar {
       proc.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
       proc.on('exit', (code) => {
         this.proc = null;
+        this.modelArg = null;
         settle(() => reject(new Error(`本地 FunASR 引擎退出（code ${code}）——检查 conda env "funasr"`)));
       });
       proc.on('error', (e) => settle(() => reject(e)));
@@ -101,14 +160,36 @@ export class FunasrSidecar {
   }
 
   /** reap only what we spawned; kill the whole tree (python may have children) */
-  stop(): void {
+  async stop(): Promise<void> {
     const p = this.proc;
     this.proc = null;
+    this.modelArg = null;
     if (!p?.pid) return;
+    let didExit = false;
+    const exited = new Promise<void>((resolve) =>
+      p.once('exit', () => {
+        didExit = true;
+        resolve();
+      }),
+    );
+    const plan = sidecarStopPlan(process.platform, p.pid);
     try {
-      execFile('taskkill', ['/pid', String(p.pid), '/T', '/F']);
+      if (plan.kind === 'command') {
+        execFile(plan.file, plan.args, () => undefined);
+      } else {
+        process.kill(plan.pid, plan.signal);
+      }
     } catch {
-      /* already gone */
+      p.kill('SIGTERM');
+    }
+    await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 2_000))]);
+    if (!didExit) {
+      try {
+        if (process.platform === 'win32') p.kill();
+        else process.kill(-p.pid, 'SIGKILL');
+      } catch {
+        p.kill('SIGKILL');
+      }
     }
   }
 }

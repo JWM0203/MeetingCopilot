@@ -169,7 +169,7 @@ describe('SettingsStore', () => {
     writeFileSync(file, JSON.stringify({ version: 1, llm: { model: 'custom-model' } }), 'utf8');
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data.llm.model).toBe('custom-model');
-    expect(s.data.ui.hotkeyToggle).toBe('Control+B');
+    expect(s.data.ui.hotkeyToggle).toBe(process.platform === 'darwin' ? 'Command+B' : 'Control+B');
     expect(s.data.asr.language).toBe('auto');
   });
 
@@ -179,5 +179,14 @@ describe('SettingsStore', () => {
     s.applyPatch({ llm: { model: 'deepseek-v4-pro' } });
     expect(s.getLlmApiKey()).toBe('sk-1');
     expect(s.data.llm.model).toBe('deepseek-v4-pro');
+  });
+
+  it('round-trips the macOS input device used for the other-party channel', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ audio: { themDeviceId: 'blackhole-2ch' } });
+
+    const s2 = new SettingsStore(file, fakeCipher);
+    expect(s2.data.audio.themDeviceId).toBe('blackhole-2ch');
+    expect(s2.getPublic().audio.themDeviceId).toBe('blackhole-2ch');
   });
 });
