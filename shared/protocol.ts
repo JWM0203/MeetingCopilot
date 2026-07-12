@@ -14,6 +14,8 @@ export type Speaker = 'them' | 'me';
 export type FontScale = 'small' | 'medium' | 'large';
 /** UI theme; 'system' follows prefers-color-scheme */
 export type ThemeMode = 'dark' | 'light' | 'system';
+/** UI display language (independent of answerLang, which steers the LLM) */
+export type UiLang = 'zh' | 'en';
 /** per-session material slots: resume vs job description */
 export type KbSlot = 'resume' | 'jd';
 
@@ -73,6 +75,8 @@ export interface SettingsFile {
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
     theme: ThemeMode;
+    /** UI display language; absent = follow OS locale (zh → zh, else en) */
+    lang?: UiLang;
   };
   audio: {
     /** also capture the microphone (dual-channel transcription: 对方 + 我) */
@@ -110,6 +114,7 @@ export interface PublicSettings {
     opacity: number;
     fontScale: FontScale;
     theme: ThemeMode;
+    lang: UiLang;
   };
   audio: { micEnabled: boolean; micDeviceId?: string };
 }
@@ -138,6 +143,7 @@ export interface SettingsPatch {
     opacity?: number;
     fontScale?: FontScale;
     theme?: ThemeMode;
+    lang?: UiLang;
   };
   audio?: { micEnabled?: boolean; micDeviceId?: string };
 }

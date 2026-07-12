@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TranscriptSegment } from '../../shared/transcript';
+import { useT } from '../i18n';
 
 interface SelPopup {
   text: string;
@@ -28,6 +29,7 @@ export function TranscriptPanel({
   onTranslate: (seg: TranscriptSegment) => void;
   onClear: () => void;
 }) {
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [sel, setSel] = useState<SelPopup | null>(null);
@@ -66,15 +68,15 @@ export function TranscriptPanel({
   return (
     <section className="pane pane-transcript">
       <header className="pane-head">
-        <span className="pane-title">📝 转录</span>
-        <span className="pane-hint">划选精准回答 · 译=对照</span>
-        <button className="btn btn-sm" onClick={onClear} title="清空本会话转录">
-          清空
+        <span className="pane-title">{t.transcript.title}</span>
+        <span className="pane-hint">{t.transcript.hint}</span>
+        <button className="btn btn-sm" onClick={onClear} title={t.transcript.clearTitle}>
+          {t.transcript.clear}
         </button>
       </header>
       <div className="transcript" ref={boxRef} onScroll={onScroll} onMouseUp={captureSelection}>
         {segments.length === 0 ? (
-          <div className="pane-empty">点击「▶ 开始」采集系统声音，对方说的每句话会出现在这里。</div>
+          <div className="pane-empty">{t.transcript.empty}</div>
         ) : (
           segments.map((s) => {
             const me = s.speaker === 'me';
@@ -82,44 +84,46 @@ export function TranscriptPanel({
               <div
                 key={s.id}
                 className={`bubble ${me ? 'bubble-me' : 'bubble-them'}`}
-                title="点击复制（或划选文字精准回答）"
+                title={t.transcript.bubbleTitle}
                 onClick={() => {
                   if (!window.getSelection()?.toString().trim()) {
                     void navigator.clipboard.writeText(s.text);
                   }
                 }}
               >
-                <div className="bubble-role">{me ? '我' : '对方'}</div>
+                <div className="bubble-role">{me ? t.transcript.me : t.transcript.them}</div>
                 <div className="bubble-text">{s.text}</div>
                 {(s.translation || s.translating) && (
-                  <div className="bubble-trans">{s.translating ? '翻译中…' : s.translation}</div>
+                  <div className="bubble-trans">{s.translating ? t.transcript.translating : s.translation}</div>
                 )}
                 <div className="bubble-meta">
-                  {new Date(s.endTs).toLocaleTimeString('zh-CN', { hour12: false })}
-                  {s.lang ? ` · ${s.lang === 'chinese' ? '中' : s.lang === 'english' ? 'EN' : s.lang}` : ''}
+                  {new Date(s.endTs).toLocaleTimeString(t.locale, { hour12: false })}
+                  {s.lang
+                    ? ` · ${s.lang === 'chinese' ? t.transcript.langZh : s.lang === 'english' ? t.transcript.langEn : s.lang}`
+                    : ''}
                   {s.e2eMs !== undefined ? ` · ${(s.e2eMs / 1000).toFixed(2)}s` : ''}
                 </div>
                 <div className="bubble-btns">
                   <button
                     className="bubble-ask"
-                    title="翻译成中文（原文/译文对照，不进对话上下文）"
+                    title={t.transcript.translateTitle}
                     onClick={(e) => {
                       e.stopPropagation();
                       onTranslate(s);
                     }}
                   >
-                    译
+                    {t.transcript.translateBtn}
                   </button>
                   {!me && (
                     <button
                       className="bubble-ask"
-                      title="让 AI 帮我回答这句"
+                      title={t.transcript.answerTitle}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAsk(s.text);
                       }}
                     >
-                      ⚡答
+                      {t.transcript.answerBtn}
                     </button>
                   )}
                 </div>
@@ -129,13 +133,13 @@ export function TranscriptPanel({
         )}
         {partials?.them && (
           <div className="bubble bubble-them bubble-live">
-            <div className="bubble-role">对方 · 实时</div>
+            <div className="bubble-role">{`${t.transcript.them} · ${t.transcript.live}`}</div>
             <div className="bubble-text">{partials.them}</div>
           </div>
         )}
         {partials?.me && (
           <div className="bubble bubble-me bubble-live">
-            <div className="bubble-role">我 · 实时</div>
+            <div className="bubble-role">{`${t.transcript.me} · ${t.transcript.live}`}</div>
             <div className="bubble-text">{partials.me}</div>
           </div>
         )}
@@ -147,7 +151,7 @@ export function TranscriptPanel({
               if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
             }}
           >
-            ↓ 回到最新
+            {t.transcript.jumpLatest}
           </button>
         )}
       </div>
@@ -158,7 +162,7 @@ export function TranscriptPanel({
           onMouseDown={(e) => e.preventDefault()}
         >
           <button className="btn btn-sm btn-primary" onClick={answerSel}>
-            ⚡回答选中
+            {t.transcript.answerSelection}
           </button>
         </div>
       )}
