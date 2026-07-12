@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 import type { PublicSettings, SettingsFile, SettingsPatch } from '../shared/protocol';
+import { defaultHotkeysForPlatform } from '../shared/platform';
 
 export interface SecretCipher {
   available(): boolean;
@@ -27,7 +28,8 @@ export const plainCipher: SecretCipher = {
     b64.startsWith('plain:') ? Buffer.from(b64.slice(6), 'base64').toString('utf8') : '',
 };
 
-export function defaultSettings(): SettingsFile {
+export function defaultSettings(platform: string = process.platform): SettingsFile {
+  const hotkeys = defaultHotkeysForPlatform(platform);
   return {
     version: 1,
     llm: {
@@ -51,8 +53,8 @@ export function defaultSettings(): SettingsFile {
     },
     ui: {
       stealth: true,
-      hotkeyToggle: 'Control+B',
-      hotkeyShot: 'Control+Shift+S',
+      hotkeyToggle: hotkeys.toggle,
+      hotkeyShot: hotkeys.shot,
       opacity: 0.94,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
@@ -188,7 +190,11 @@ export class SettingsStore {
       // knowledge lives in a separate file; main fills the real char count
       knowledge: { chars: 0 },
       ui: { ...d.ui },
-      audio: { micEnabled: d.audio.micEnabled, micDeviceId: d.audio.micDeviceId },
+      audio: {
+        themDeviceId: d.audio.themDeviceId,
+        micEnabled: d.audio.micEnabled,
+        micDeviceId: d.audio.micDeviceId,
+      },
     };
   }
 

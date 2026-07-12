@@ -211,6 +211,12 @@ export function SettingsPanel({
       </div>
 
       <div className="settings-section">转录（ASR）</div>
+      {window.mc.platform === 'darwin' && (
+        <div className="settings-hint">
+          macOS 不支持 Electron 的 Windows 回环采集。点击标题栏「开始」后可选择普通输入；若要采集会议/系统声音，请先安装并选择
+          BlackHole 等虚拟音频设备。
+        </div>
+      )}
       <div className="settings-row">
         <label>转录后端</label>
         <select

@@ -1,8 +1,7 @@
 /**
- * Microphone capture (the user's own voice → 'me' channel). Standard Web API
- * (getUserMedia), no native code — unlike per-process system audio. Feeds the
- * same 16 kHz PCM worklet as the loopback path, so the worker segments both
- * channels identically.
+ * Standard audio-input capture. Used for the user's microphone and, on
+ * platforms without Electron loopback, for the other-party channel (including
+ * virtual inputs such as BlackHole). Feeds the same 16 kHz PCM worklet.
  */
 export class MicCapture {
   private ctx: AudioContext | null = null;
@@ -16,14 +15,16 @@ export class MicCapture {
   async start(
     deviceId: string | undefined,
     onPcm: (pcm: ArrayBuffer, captureTs: number) => void,
+    options: { audioProcessing?: boolean } = {},
   ): Promise<void> {
     if (this.ctx) return;
+    const processing = options.audioProcessing ?? true;
     const constraints: MediaStreamConstraints = {
       audio: {
         ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        echoCancellation: processing,
+        noiseSuppression: processing,
+        autoGainControl: processing,
       },
     };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);

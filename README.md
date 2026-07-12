@@ -2,9 +2,9 @@
 
 # MeetingCopilot
 
-**Real-time stealth meeting & interview copilot for Windows**
+**Real-time meeting & interview copilot for Windows and macOS**
 
-Live transcription of the other side · first-person teleprompter answers · invisible to screen sharing
+Live transcription of the other side · first-person teleprompter answers · capture protection
 
 <a href="https://github.com/JWM0203/MeetingCopilot/stargazers"><img src="https://img.shields.io/github/stars/JWM0203/MeetingCopilot?style=flat-square&logo=github&color=2a6df4" alt="GitHub stars"></a>
 <img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-3da639?style=flat-square" alt="license">
@@ -30,7 +30,7 @@ Live transcription of the other side · first-person teleprompter answers · inv
 
 ## Features
 
-- 🎧 **Hears the other side directly — no meeting bot.** Captures Windows system loopback audio, so it works with any meeting app (Zoom / Teams / VoOV / …) without joining the call. Optional independent microphone channel transcribes your own voice separately.
+- 🎧 **Hears the other side directly — no meeting bot.** Windows captures system loopback audio. macOS uses a selectable audio input (choose a virtual device such as BlackHole for meeting/system audio). An independent microphone channel transcribes your own voice separately.
 - ⚡ **Streaming ASR with 4 switchable backends** — local FunASR streaming (default: free, private; the Python sidecar is auto-spawned and reaped by the app), local Whisper turbo (offline fallback, DirectML GPU), Alibaba Cloud `fun-asr-realtime` (word-by-word cloud streaming), MiMo per-segment. Live gray partial subtitles appear while speech is still in progress.
 - 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
@@ -38,7 +38,7 @@ Live transcription of the other side · first-person teleprompter answers · inv
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
 - 🚀 **Prefix-cache prewarm** — pressing ▶ fires a 1-token request that pre-builds the LLM provider's KV prefix cache, so the first real answer prefills from cache (verified via DeepSeek `prompt_cache_hit_tokens`); kept warm automatically during capture.
 - 🖼️ **Region-screenshot Q&A** — drag-select any screen region (the selection overlay itself is invisible to recording) and ask a vision model (MiMo / Gemini) about it.
-- 🥷 **Stealth** — content protection makes the window invisible in OBS, screen shares and screenshots; a global hotkey hides/shows it instantly.
+- 🥷 **Capture protection** — content protection plus a global hide/show hotkey. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
 - 🌗 **Dark / light / follow-system themes**, 3-step answer font size, latency HUD, inline translation, multi-session with fully isolated transcript + chat + material per meeting.
 
 | Dark | Light |
@@ -57,11 +57,11 @@ Live transcription of the other side · first-person teleprompter answers · inv
 
 | Component | Requirement |
 |---|---|
-| OS | Windows 10 / 11 |
+| OS | Windows 10 / 11, or Apple-silicon macOS 14+ |
 | Runtime | Node.js ≥ 20 and npm |
 | LLM | Any OpenAI-compatible API key — DeepSeek recommended (fast, cheap, prefix caching) |
-| Local streaming ASR *(default)* | Python 3.10 conda env with `funasr` + `torch`; NVIDIA GPU recommended |
-| Local Whisper *(offline fallback)* | `whisper-large-v3-turbo` ONNX weights, DirectML-capable GPU |
+| Local streaming ASR *(default)* | Python 3.10/3.11 with `funasr` + `torch`; CUDA, Apple MPS, or CPU fallback |
+| Local Whisper *(offline fallback)* | `whisper-large-v3-turbo` ONNX weights; DirectML on Windows, CPU elsewhere |
 | Cloud ASR *(optional)* | Alibaba Cloud DashScope API key, or a MiMo key |
 
 ## Quick Start
@@ -71,7 +71,7 @@ git clone https://github.com/JWM0203/MeetingCopilot.git
 cd MeetingCopilot
 npm install        # postinstall applies patches/ (transformers.js patch — do not remove)
 npm run build      # builds main + preload + renderer into out/
-start.bat          # or: npx electron .
+npm start          # cross-platform; Windows can also use start.bat
 ```
 
 First run:
@@ -85,12 +85,21 @@ First run:
 > `registry=https://registry.npmmirror.com` and
 > `electron_mirror=https://npmmirror.com/mirrors/electron/`.
 
+### macOS audio
+
+Electron's `audio: 'loopback'` source is Windows-only. On macOS, press **▶** to
+grant microphone access, then select the input beside the button. To capture a
+meeting app rather than the built-in microphone, route system audio to an input
+device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole) and
+select it there. Audio processing is disabled for this channel so virtual-device
+PCM is not altered. The separate 🎤 channel keeps normal microphone processing.
+
 ## ASR Backends
 
 | Backend | Latency | Cost | Privacy | Notes |
 |---|---|---|---|---|
 | **Local FunASR streaming** *(default)* | ~1.2–1.8 s | free | ✅ fully local | `Fun-ASR-Nano` (zh+en, punctuation) or `paraformer` true streaming (zh-only, snappier subtitles) |
-| Local Whisper turbo | ~2 s | free | ✅ fully local | offline fallback; DirectML GPU encoder |
+| Local Whisper turbo | ~2 s on supported Windows GPUs | free | ✅ fully local | DirectML on Windows; CPU fallback elsewhere |
 | Aliyun `fun-asr-realtime` | best | pay-per-use | cloud | word-by-word streaming, server-side punctuation |
 | MiMo per-segment | ~1 s/seg | pay-per-use | cloud | simple per-utterance cloud ASR |
 
@@ -104,7 +113,19 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install funasr modelscope websockets numpy
 ```
 
-That's it — the app **auto-spawns and reaps** the sidecar (`tools/funasr_stream_server.py`, `ws://127.0.0.1:10097`). Models download automatically from ModelScope on first run (~1–2 GB). If your Python lives elsewhere, set the env var `MC_FUNASR_PYTHON` to its full path.
+On Apple silicon, the validated project-local setup is:
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements-funasr.txt
+npm start
+```
+
+The app discovers `.venv` automatically. `--device auto` tries CUDA, then an
+available Apple MPS device, then CPU; accelerator initialization failures retry
+on CPU. Only the selected FunASR model is loaded to keep memory bounded.
+
+That's it — the app **auto-spawns and reaps** the sidecar (`tools/funasr_stream_server.py`, `ws://127.0.0.1:10097`). The selected model downloads automatically from ModelScope on first run (~880 MB for paraformer or ~1.7 GB for Nano). If your Python lives elsewhere, set `MC_FUNASR_PYTHON` to its full path.
 
 ### Local Whisper turbo
 
@@ -130,8 +151,8 @@ Architecture in one line: Electron main process (window / stealth / IPC / LLM ro
 
 ## Privacy
 
-- API keys are encrypted at rest with Windows DPAPI (`safeStorage`) and never reach the renderer process.
-- All data (settings / sessions / materials) lives in local JSON files under `%APPDATA%/MeetingCopilot/`. No telemetry, no accounts, no server.
+- API keys are encrypted at rest with Electron `safeStorage` (Windows DPAPI / macOS Keychain) and never reach the renderer process.
+- All data (settings / sessions / materials) lives under Electron's per-user `userData` directory (`%APPDATA%/MeetingCopilot/` on Windows and `~/Library/Application Support/MeetingCopilot/` on macOS). No telemetry, no accounts, no server.
 - With the local ASR backends, audio never leaves your machine; with BYOK LLMs, transcripts go only to the provider you configured.
 
 ## Disclaimer

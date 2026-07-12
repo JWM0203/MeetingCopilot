@@ -1,7 +1,7 @@
 {
   "name": "meeting-copilot",
   "version": "0.1.0",
-  "description": "Real-time stealth meeting/interview copilot for Windows: streaming ASR (local FunASR / cloud), first-person teleprompter answers via BYOK LLM, invisible to screen sharing",
+  "description": "Real-time meeting/interview copilot for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "JWM0203",
   "license": "SEE LICENSE IN LICENSE",
@@ -16,8 +16,14 @@
     "start": "electron-vite preview",
     "postinstall": "patch-package",
     "test": "vitest run",
+    "test:python": "node tools/run-python-tests.mjs",
+    "test:all": "npm test && npm run test:python",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "harness": "node tools/asr-harness.mjs"
+    "harness": "node tools/asr-harness.mjs",
+    "smoke:llm": "vite-node tools/llm-smoke.ts",
+    "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
+    "smoke:e2e:llm": "node tools/e2e-llm.mjs",
+    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
