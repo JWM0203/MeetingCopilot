@@ -4,11 +4,8 @@
  * fixtures against the live Aliyun fun-asr-realtime endpoint, and assert we
  * get partials while speaking plus correct finals.
  *
- * Usage (PowerShell):
- *   $env:MC_RT_KEY = 'sk-...'
- *   $env:MC_RT_URL = 'wss://{ws}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference'
- *   npm run build   # once, so out/main/asrWorker.js exists
- *   node tools/rt-asr-smoke.mjs
+ * Usage: set MC_RT_URL plus MC_RT_KEY for remote wss://, build once, then run
+ * `npm run smoke:asr:realtime`. A local ws:// sidecar needs no key.
  */
 import { Worker } from 'worker_threads';
 import { readFileSync, existsSync } from 'fs';

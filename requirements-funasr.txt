@@ -1,0 +1,7 @@
+# Reproducible local sidecar environment validated on macOS arm64 / Python 3.11.
+torch==2.11.0
+torchaudio==2.11.0
+funasr==1.3.14
+modelscope==1.38.1
+websockets==16.1
+numpy==2.4.6

@@ -11,6 +11,7 @@ import {
 } from '../shared/protocol';
 
 export interface McApi {
+  readonly platform: NodeJS.Platform;
   getSettings(): Promise<PublicSettings>;
   setSettings(patch: SettingsPatch): Promise<PublicSettings>;
   importKnowledge(): Promise<{ chars: number }>;
@@ -55,6 +56,7 @@ export interface McApi {
 }
 
 const api: McApi = {
+  platform: process.platform,
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   importKnowledge: () => ipcRenderer.invoke(IPC.knowledgeImport),

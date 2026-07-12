@@ -15,6 +15,7 @@ import {
   type TranscriptSegment,
 } from '../shared/transcript';
 import { isLikelyQuestion } from '../shared/textHeuristics';
+import { captureKindForPlatform } from '../shared/platform';
 import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
 import { TranscriptPanel } from './components/TranscriptPanel';
@@ -80,8 +81,10 @@ export function App() {
   const [currentId, setCurrentId] = useState<string>('');
   const [kbNotice, setKbNotice] = useState<string | null>(null);
 
-  const captureRef = useRef<LoopbackCapture | null>(null);
+  const loopbackRef = useRef<LoopbackCapture | null>(null);
+  const themInputRef = useRef<MicCapture | null>(null);
   const micRef = useRef<MicCapture | null>(null);
+  const settingsRef = useRef<PublicSettings | null>(null);
   const e2eSamples = useRef<number[]>([]);
   const sessionsRef = useRef<StoredSession[]>([]);
   const currentIdRef = useRef<string>('');
@@ -93,8 +96,10 @@ export function App() {
   const tRef = useRef<Dict>(t);
   tRef.current = t;
 
-  if (!captureRef.current) captureRef.current = new LoopbackCapture();
+  if (!loopbackRef.current) loopbackRef.current = new LoopbackCapture();
+  if (!themInputRef.current) themInputRef.current = new MicCapture();
   if (!micRef.current) micRef.current = new MicCapture();
+  settingsRef.current = settings;
   sessionsRef.current = sessions;
   currentIdRef.current = currentId;
 
@@ -405,12 +410,23 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuous, lastSeg?.id, lastSeg?.endTs]);
 
-  // ▶ 开始/停止 = SYSTEM audio only (对方). Mic is a fully independent button.
+  // Windows: Electron system loopback. macOS/Linux: selected ordinary input
+  // (typically a virtual audio device for meeting/system audio).
   const startCapture = useCallback(async () => {
-    const cap = captureRef.current!;
+    const inputMode = captureKindForPlatform(window.mc.platform) === 'input';
+    const cap = inputMode ? themInputRef.current! : loopbackRef.current!;
     if (cap.running) return;
     try {
-      await cap.start((buf, ts) => window.mc.sendPcm(buf, ts, 'them'));
+      if (inputMode) {
+        await themInputRef.current!.start(
+          settingsRef.current?.audio.themDeviceId,
+          (buf, ts) => window.mc.sendPcm(buf, ts, 'them'),
+          { audioProcessing: false },
+        );
+        void listMics().then(setMics).catch(() => undefined);
+      } else {
+        await loopbackRef.current!.start((buf, ts) => window.mc.sendPcm(buf, ts, 'them'));
+      }
       window.mc.captureStarted();
       setCapturing(true);
       prewarm(true); // ▶ = the meeting starts — build the KV prefix cache now
@@ -421,7 +437,11 @@ export function App() {
   }, []);
 
   const stopCapture = useCallback(async () => {
-    await captureRef.current!.stop();
+    const cap =
+      captureKindForPlatform(window.mc.platform) === 'input'
+        ? themInputRef.current!
+        : loopbackRef.current!;
+    await cap.stop();
     window.mc.captureStopped();
     setCapturing(false);
   }, []);
@@ -506,6 +526,27 @@ export function App() {
     },
     [],
   );
+
+  const selectThemInput = useCallback(async (deviceId: string) => {
+    const updated = await window.mc.setSettings({ audio: { themDeviceId: deviceId || undefined } });
+    setSettings(updated);
+    settingsRef.current = updated;
+    const input = themInputRef.current!;
+    if (input.running) {
+      await input.stop();
+      await input
+        .start(
+          deviceId || undefined,
+          (buf, ts) => window.mc.sendPcm(buf, ts, 'them'),
+          { audioProcessing: false },
+        )
+        .catch((e) => {
+          window.mc.captureStopped();
+          setCapturing(false);
+          setAsr((s) => ({ ...s, lastError: `对方音频输入切换失败: ${(e as Error).message}` }));
+        });
+    }
+  }, []);
 
   const clearTranscript = useCallback(() => {
     patchSession(currentIdRef.current, (s) => ({ ...s, segments: [] }));
@@ -606,10 +647,33 @@ export function App() {
             className={capturing ? 'btn btn-live' : 'btn btn-primary'}
             onClick={() => (capturing ? void stopCapture() : void startCapture())}
             disabled={asr.phase !== 'ready'}
-            title={capturing ? t.titlebar.stopTitle : t.titlebar.startTitle}
+            title={
+              captureKindForPlatform(window.mc.platform) === 'loopback'
+                ? capturing
+                  ? t.titlebar.stopTitle
+                  : t.titlebar.startTitle
+                : capturing
+                  ? t.titlebar.stopInputTitle
+                  : t.titlebar.startInputTitle
+            }
           >
             {capturing ? t.titlebar.stop : t.titlebar.start}
           </button>
+          {captureKindForPlatform(window.mc.platform) === 'input' && mics.length > 0 && (
+            <select
+              className="mic-select"
+              value={settings?.audio.themDeviceId ?? ''}
+              onChange={(e) => void selectThemInput(e.target.value)}
+              title={t.titlebar.themDeviceTitle}
+            >
+              <option value="">{t.titlebar.themDeviceDefault}</option>
+              {mics.map((m) => (
+                <option key={m.deviceId} value={m.deviceId}>
+                  {m.label.slice(0, 14)}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className={continuous ? 'btn btn-on' : 'btn'}
             onClick={() => setContinuous((v) => !v)}
@@ -652,7 +716,11 @@ export function App() {
           <button
             className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleStealth()}
-            title={t.titlebar.stealthTitle}
+            title={
+              window.mc.platform === 'darwin'
+                ? t.titlebar.stealthMacTitle
+                : t.titlebar.stealthTitle
+            }
           >
             {t.titlebar.stealth(!!settings?.ui.stealth)}
           </button>

@@ -33,6 +33,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+from funasr_device import run_with_device_fallback
 
 logging.basicConfig(level=logging.INFO, format="[funasr-local] %(message)s", stream=sys.stderr)
 log = logging.getLogger(__name__)
@@ -57,12 +58,12 @@ _models = {"stream": None, "oneshot": None}
 _infer_ms: list = []  # rolling per-call latency
 
 
-def load_model(model_arg: str, device: str):
-    import torch
+def _load_models(model_arg: str, device: str, torch):
+    """Load/warm the selected model(s) on one concrete device."""
     from funasr import AutoModel
 
-    if device == "auto":
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    _models["oneshot"] = None
+    _models["stream"] = None
     log.info("torch %s | cuda available=%s | using device=%s",
              torch.__version__, torch.cuda.is_available(), device)
     if device.startswith("cuda"):
@@ -91,6 +92,21 @@ def load_model(model_arg: str, device: str):
     if not loaded:
         raise SystemExit(f"unknown --model {model_arg} (use paraformer | nano | both)")
     log.info("model(s) ready: %s", ", ".join(loaded))
+
+
+def load_model(model_arg: str, device: str):
+    import torch
+
+    def failed(candidate, error):
+        log.warning("device %s initialization failed: %s; trying fallback", candidate, error)
+
+    used, _ = run_with_device_fallback(
+        lambda candidate: _load_models(model_arg, candidate, torch),
+        device,
+        torch,
+        on_error=failed,
+    )
+    log.info("selected device=%s", used)
 
 
 def pick_mode(requested_model: str) -> str:
@@ -335,7 +351,7 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=10097)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--device", default="auto", help="auto | cpu | cuda:0")
+    ap.add_argument("--device", default="auto", help="auto | cpu | mps | cuda:0")
     ap.add_argument("--model", default="both", help="paraformer | nano | both")
     args = ap.parse_args()
 
@@ -350,4 +366,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

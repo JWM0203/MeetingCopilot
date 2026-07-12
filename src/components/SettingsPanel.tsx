@@ -252,6 +252,9 @@ export function SettingsPanel({
       </div>
 
       <div className="settings-section">{t.settings.asrSection}</div>
+      {window.mc.platform === 'darwin' && (
+        <div className="settings-hint">{t.settings.macAudioHint}</div>
+      )}
       <div className="settings-row">
         <label>{t.settings.asrBackend}</label>
         <select

@@ -18,6 +18,7 @@
     "electron/**/*.ts",
     "shared/**/*.ts",
     "test/**/*.ts",
+    "tools/**/*.ts",
     "electron.vite.config.ts"
   ]
 }
