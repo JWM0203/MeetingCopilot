@@ -206,6 +206,9 @@ body {
   display: flex;
   gap: 6px;
   -webkit-app-region: no-drag;
+  /* English labels run longer than Chinese — wrap instead of overflowing */
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .btn {

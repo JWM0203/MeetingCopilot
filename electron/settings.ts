@@ -9,7 +9,7 @@
  */
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
-import type { PublicSettings, SettingsFile, SettingsPatch } from '../shared/protocol';
+import type { PublicSettings, SettingsFile, SettingsPatch, UiLang } from '../shared/protocol';
 
 export interface SecretCipher {
   available(): boolean;
@@ -70,6 +70,8 @@ export class SettingsStore {
   constructor(
     private readonly filePath: string,
     private readonly cipher: SecretCipher,
+    /** UI language when the user never chose one (derived from OS locale) */
+    private readonly fallbackUiLang: UiLang = 'zh',
   ) {
     this.data = this.loadFromDisk();
   }
@@ -187,7 +189,7 @@ export class SettingsStore {
       },
       // knowledge lives in a separate file; main fills the real char count
       knowledge: { chars: 0 },
-      ui: { ...d.ui },
+      ui: { ...d.ui, lang: d.ui.lang ?? this.fallbackUiLang },
       audio: { micEnabled: d.audio.micEnabled, micDeviceId: d.audio.micDeviceId },
     };
   }

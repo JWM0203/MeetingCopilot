@@ -63,5 +63,5 @@ export async function listMics(): Promise<{ deviceId: string; label: string }[]>
   const devices = await navigator.mediaDevices.enumerateDevices();
   return devices
     .filter((d) => d.kind === 'audioinput')
-    .map((d) => ({ deviceId: d.deviceId, label: d.label || '麦克风' }));
+    .map((d) => ({ deviceId: d.deviceId, label: d.label })); // '' → caller renders its default-mic label
 }
