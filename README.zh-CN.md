@@ -12,7 +12,7 @@
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-国内镜像-C71D23?style=flat-square&logo=gitee" alt="Gitee 国内镜像"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
-[English](README.md) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [转录后端](#转录后端) · [协议](#协议)
+[English](README.md) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [分平台部署](#分平台部署) · [转录后端](#转录后端) · [协议](#协议)
 
 </div>
 
@@ -92,10 +92,14 @@ npm start          # 跨平台；Windows 也可使用 start.bat
 > `registry=https://registry.npmmirror.com` 和
 > `electron_mirror=https://npmmirror.com/mirrors/electron/`。
 
-### macOS 音频
+## 分平台部署
 
-Electron 的 `audio: 'loopback'` 仅支持 Windows。macOS 点击 **▶** 并授权麦克风后，可在按钮旁选择输入设备。若要采集会议软件而不是内置麦克风，请把系统声音路由到
-[BlackHole](https://github.com/ExistentialAudio/BlackHole) 等虚拟输入并选中它。对方通道会关闭回声消除、降噪和自动增益，避免破坏虚拟设备的 PCM；独立 🎤 通道仍保留正常麦克风处理。
+音频采集方式、Python 环境、隐身行为和快捷键因系统而异——每个系统有自己目录下的专属指南：
+
+| 平台 | 音频采集 | 隐身 | 指南 |
+|---|---|---|---|
+| 🪟 **Windows 10 / 11** | 系统回环——零配置 | 窗口对采集不可见 | **[docs/windows/SETUP.zh-CN.md](docs/windows/SETUP.zh-CN.md)** |
+| 🍎 **macOS 14+（Apple 芯片）** | 输入设备 + [BlackHole](https://github.com/ExistentialAudio/BlackHole) 路由 | 尽力而为（ScreenCaptureKit 可能捕获） | **[docs/macos/SETUP.zh-CN.md](docs/macos/SETUP.zh-CN.md)** |
 
 ## 转录后端
 
@@ -108,29 +112,16 @@ Electron 的 `audio: 'loopback'` 仅支持 Windows。macOS 点击 **▶** 并授
 
 ### 本地流式 FunASR（默认）
 
-```bash
-conda create -n funasr python=3.10 -y
-conda activate funasr
-# 按你的显卡选 torch 版本（RTX 50 系示例为 cu128）：
-pip install torch --index-url https://download.pytorch.org/whl/cu128
-pip install funasr modelscope websockets numpy
-```
+一次性配好 Python 环境后，应用会**自动拉起并回收**引擎（`tools/funasr_stream_server.py`，`ws://127.0.0.1:10097`）——在设置里选中预设即可。当前选中的模型首次运行时从 ModelScope 自动下载（paraformer 约 880 MB，Nano 约 1.7 GB）。`--device auto` 自动选择 CUDA / Apple MPS / CPU，失败自动退回 CPU。
 
-Apple 芯片 Mac 已验证的项目内环境：
+- **Windows**（conda 环境，NVIDIA 显卡）：见 [docs/windows/SETUP.zh-CN.md](docs/windows/SETUP.zh-CN.md#本地流式-funasr默认转录后端)
+- **macOS**（项目 `.venv`，Apple MPS）：见 [docs/macos/SETUP.zh-CN.md](docs/macos/SETUP.zh-CN.md#本地流式-funasr默认转录后端)
 
-```bash
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements-funasr.txt
-npm start
-```
-
-应用会自动发现 `.venv`。`--device auto` 依次尝试 CUDA、可用的 Apple MPS、CPU；加速器初始化失败会自动退回 CPU。应用只加载当前选中的一个 FunASR 模型，降低内存占用。
-
-配好即用——应用会**自动拉起并回收**引擎（`tools/funasr_stream_server.py`，`ws://127.0.0.1:10097`）。当前选中的模型首次运行时从 ModelScope 自动下载（paraformer 约 880 MB，Nano 约 1.7 GB）。Python 装在别处时，设置环境变量 `MC_FUNASR_PYTHON` 指向完整路径即可。
+Python 装在别处时，设置环境变量 `MC_FUNASR_PYTHON` 指向完整路径即可。
 
 ### 本地 Whisper turbo
 
-把 [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) 放到 `%APPDATA%/MeetingCopilot/models/onnx-community/whisper-large-v3-turbo-ONNX/`（`encoder_model_fp16.onnx`、`decoder_model_merged_quantized.onnx` 及 config/tokenizer 等文件）。
+把 [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) 放到 `<userData>/models/onnx-community/whisper-large-v3-turbo-ONNX/`——Windows 为 `%APPDATA%/MeetingCopilot/`，macOS 为 `~/Library/Application Support/MeetingCopilot/`（`encoder_model_fp16.onnx`、`decoder_model_merged_quantized.onnx` 及 config/tokenizer 等文件）。编码器在 Windows 走 DirectML，其他平台走 CPU。
 
 ### 云端
 

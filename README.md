@@ -12,7 +12,7 @@ Live transcription of the other side · first-person teleprompter answers · cap
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-China%20mirror-C71D23?style=flat-square&logo=gitee" alt="Gitee mirror"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
-[简体中文](README.zh-CN.md) · [Features](#features) · [Quick Start](#quick-start) · [ASR Backends](#asr-backends) · [License](#license)
+[简体中文](README.zh-CN.md) · [Features](#features) · [Quick Start](#quick-start) · [Platform Setup](#platform-setup) · [ASR Backends](#asr-backends) · [License](#license)
 
 </div>
 
@@ -92,14 +92,15 @@ First run:
 > `registry=https://registry.npmmirror.com` and
 > `electron_mirror=https://npmmirror.com/mirrors/electron/`.
 
-### macOS audio
+## Platform Setup
 
-Electron's `audio: 'loopback'` source is Windows-only. On macOS, press **▶** to
-grant microphone access, then select the input beside the button. To capture a
-meeting app rather than the built-in microphone, route system audio to an input
-device such as [BlackHole](https://github.com/ExistentialAudio/BlackHole) and
-select it there. Audio processing is disabled for this channel so virtual-device
-PCM is not altered. The separate 🎤 channel keeps normal microphone processing.
+Audio capture, Python setup, stealth behavior and hotkeys differ per platform —
+each OS has its own guide under its own directory:
+
+| Platform | Audio capture | Stealth | Guide |
+|---|---|---|---|
+| 🪟 **Windows 10 / 11** | system loopback — zero config | window excluded from captures | **[docs/windows/SETUP.md](docs/windows/SETUP.md)** |
+| 🍎 **macOS 14+ (Apple silicon)** | input device + [BlackHole](https://github.com/ExistentialAudio/BlackHole) routing | best-effort (ScreenCaptureKit may capture) | **[docs/macos/SETUP.md](docs/macos/SETUP.md)** |
 
 ## ASR Backends
 
@@ -112,31 +113,20 @@ PCM is not altered. The separate 🎤 channel keeps normal microphone processing
 
 ### Local streaming FunASR (default)
 
-```bash
-conda create -n funasr python=3.10 -y
-conda activate funasr
-# pick the torch build matching your GPU (cu128 shown for RTX 50-series):
-pip install torch --index-url https://download.pytorch.org/whl/cu128
-pip install funasr modelscope websockets numpy
-```
+One-time Python environment, then the app **auto-spawns and reaps** the sidecar
+(`tools/funasr_stream_server.py`, `ws://127.0.0.1:10097`) — selecting the preset
+in Settings is all you do. The selected model downloads automatically from
+ModelScope on first run (~880 MB for paraformer, ~1.7 GB for Nano). `--device
+auto` picks CUDA / Apple MPS / CPU with automatic CPU fallback.
 
-On Apple silicon, the validated project-local setup is:
+- **Windows** (conda env, NVIDIA GPU): see [docs/windows/SETUP.md](docs/windows/SETUP.md#local-streaming-funasr-default-asr-backend)
+- **macOS** (project `.venv`, Apple MPS): see [docs/macos/SETUP.md](docs/macos/SETUP.md#local-streaming-funasr-default-asr-backend)
 
-```bash
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements-funasr.txt
-npm start
-```
-
-The app discovers `.venv` automatically. `--device auto` tries CUDA, then an
-available Apple MPS device, then CPU; accelerator initialization failures retry
-on CPU. Only the selected FunASR model is loaded to keep memory bounded.
-
-That's it — the app **auto-spawns and reaps** the sidecar (`tools/funasr_stream_server.py`, `ws://127.0.0.1:10097`). The selected model downloads automatically from ModelScope on first run (~880 MB for paraformer or ~1.7 GB for Nano). If your Python lives elsewhere, set `MC_FUNASR_PYTHON` to its full path.
+If your Python lives elsewhere, set `MC_FUNASR_PYTHON` to its full path.
 
 ### Local Whisper turbo
 
-Place [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) under `%APPDATA%/MeetingCopilot/models/onnx-community/whisper-large-v3-turbo-ONNX/` (`encoder_model_fp16.onnx`, `decoder_model_merged_quantized.onnx`, plus config/tokenizer files).
+Place [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx-community/whisper-large-v3-turbo-ONNX) under `<userData>/models/onnx-community/whisper-large-v3-turbo-ONNX/` — `%APPDATA%/MeetingCopilot/` on Windows, `~/Library/Application Support/MeetingCopilot/` on macOS (`encoder_model_fp16.onnx`, `decoder_model_merged_quantized.onnx`, plus config/tokenizer files). The encoder uses DirectML on Windows and CPU elsewhere.
 
 ### Cloud
 
