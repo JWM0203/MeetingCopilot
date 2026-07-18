@@ -7,7 +7,7 @@
 Live transcription of the other side · first-person teleprompter answers · capture protection
 
 <a href="https://github.com/JWM0203/MeetingCopilot/stargazers"><img src="https://img.shields.io/github/stars/JWM0203/MeetingCopilot?style=flat-square&logo=github&color=2a6df4" alt="GitHub stars"></a>
-<img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-3da639?style=flat-square" alt="license">
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-3da639?style=flat-square" alt="license"></a>
 <a href="https://github.com/JWM0203/MeetingCopilot"><img src="https://img.shields.io/badge/GitHub-repo-181717?style=flat-square&logo=github" alt="GitHub repo"></a>
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-China%20mirror-C71D23?style=flat-square&logo=gitee" alt="Gitee mirror"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
@@ -158,4 +158,4 @@ This tool is intended for personal learning and assistive use. Whether and how r
 
 ## License
 
-**Apache License 2.0 with Commons Clause** — free to use, modify and redistribute for **non-commercial** purposes; selling the software, or services whose value derives substantially from it, is not permitted. See [LICENSE](LICENSE).
+**[Apache License 2.0](LICENSE)** — free to use, modify and redistribute, including commercially, under the terms of the license.

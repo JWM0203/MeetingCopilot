@@ -7,7 +7,7 @@
 实时转录对方说话 · 第一人称提词式回答 · 采集保护
 
 <a href="https://github.com/JWM0203/MeetingCopilot/stargazers"><img src="https://img.shields.io/github/stars/JWM0203/MeetingCopilot?style=flat-square&logo=github&color=2a6df4" alt="GitHub stars"></a>
-<img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-3da639?style=flat-square" alt="license">
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-3da639?style=flat-square" alt="license"></a>
 <a href="https://github.com/JWM0203/MeetingCopilot"><img src="https://img.shields.io/badge/GitHub-仓库-181717?style=flat-square&logo=github" alt="GitHub 仓库"></a>
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-国内镜像-C71D23?style=flat-square&logo=gitee" alt="Gitee 国内镜像"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
@@ -153,4 +153,4 @@ node tools/rt-asr-smoke.mjs   # 流式转录协议冒烟（需设 MC_RT_URL / MC
 
 ## 协议
 
-**Apache License 2.0 + Commons Clause**——**非商用**前提下可自由使用、修改、再分发；不允许销售本软件或以其功能为主要价值来源的服务。详见 [LICENSE](LICENSE)。
+**[Apache License 2.0](LICENSE)**——在协议条款下可自由使用、修改、再分发，包括商业用途。
