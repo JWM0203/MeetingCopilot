@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseLocalWsPort,
+  mossPythonCandidates,
   pythonCandidates,
   resolvePython,
+  sidecarEnvironment,
   sidecarModelArg,
   sidecarStopPlan,
 } from '../electron/funasrSidecar';
@@ -53,7 +55,26 @@ describe('macOS sidecar portability', () => {
   it('loads only the selected model', () => {
     expect(sidecarModelArg('fun-asr-nano')).toBe('nano');
     expect(sidecarModelArg('paraformer-zh-streaming')).toBe('paraformer');
+    expect(sidecarModelArg('moss-transcribe-diarize')).toBe('moss');
     expect(sidecarModelArg(undefined)).toBe('nano');
+  });
+
+  it('keeps MOSS in an isolated Python environment', () => {
+    const candidates = mossPythonCandidates('C:\\app', 'win32', undefined);
+    expect(candidates).toContain('C:\\app\\.venv-moss\\Scripts\\python.exe');
+    expect(candidates).toContain('C:\\ProgramData\\miniconda3\\envs\\moss-asr\\python.exe');
+    expect(candidates).not.toContain('C:\\ProgramData\\miniconda3\\envs\\funasr\\python.exe');
+  });
+
+  it('uses resumable Hub HTTP only for MOSS downloads', () => {
+    const base = { PATH: 'test-path' };
+    expect(sidecarEnvironment('moss', base)).toEqual({
+      PATH: 'test-path',
+      HF_HUB_DISABLE_XET: '1',
+    });
+    expect(sidecarEnvironment('nano', base)).toBe(base);
+    expect(sidecarEnvironment('paraformer', base)).toBe(base);
+    expect(sidecarEnvironment('moss', { HF_HUB_DISABLE_XET: '0' }).HF_HUB_DISABLE_XET).toBe('0');
   });
 
   it('kills the process tree with the platform-native strategy', () => {

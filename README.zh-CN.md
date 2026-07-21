@@ -31,7 +31,7 @@
 ## 功能亮点
 
 - 🎧 **直接听对方的声音，不进会**：Windows 采集系统回环音频；macOS 使用可选择的音频输入（会议/系统声音可通过 BlackHole 等虚拟设备路由）。麦克风为独立通道，可单独转录你自己的发言。
-- ⚡ **流式转录，四种后端随心切**：本地 FunASR 流式（默认，免费且隐私，Python 引擎由应用自动拉起回收）· 本地 Whisper turbo（离线兜底，DirectML GPU）· 阿里云 `fun-asr-realtime`（云端逐字流式）· MiMo 按段。说话中即出灰色实时字幕。
+- ⚡ **四类转录后端随心切**：本地侧车（FunASR 默认；MOSS-Transcribe 0.9B 实验）· 本地 Whisper turbo（离线兜底，DirectML GPU）· 阿里云 `fun-asr-realtime`（云端逐字流式）· MiMo 按段。FunASR 说话中即出灰色实时字幕，MOSS 在停顿后整句输出。
 - 🌍 **中英双语开箱即用**：一场会里中英夹着说，转录自动识别语言切换，不用动任何设置；答案语言点一下 `答:EN` 就切成英文提词，照样贴合你的简历——外企英文面试直接用。
 - 🌐 **界面中英文一键切换**：按钮、提示、对话框、状态栏全部有中英两套文案，在 *设置 → 外观 → 界面语言* 里切换；首次启动自动跟随系统语言。界面语言与答案语言互相独立——可以英文界面配中文答案，反之亦然。
 - 🧠 **第一人称提词式回答**：自带 key（BYOK），任何 OpenAI 兼容大模型均可（推荐 DeepSeek）。答案就是你能一字不改念出来的话——先结论后要点；行为题按 STAR 展开；技术题先思路再关键点、必要时给复杂度；绝不编造简历之外的经历。
@@ -68,6 +68,7 @@
 | 运行时 | Node.js ≥ 20 与 npm |
 | 大模型 | 任意 OpenAI 兼容 API key——推荐 DeepSeek（快、便宜、带前缀缓存） |
 | 本地流式转录（默认） | Python 3.10/3.11 + `funasr` + `torch`；支持 CUDA、Apple MPS 或 CPU 回退 |
+| MOSS 实验转录（可选） | 独立 Python 3.12 环境；NVIDIA CUDA BF16 优先，失败自动回退 CPU |
 | 本地 Whisper（离线兜底） | `whisper-large-v3-turbo` ONNX 权重；Windows 用 DirectML，其他平台用 CPU |
 | 云端转录（可选） | 阿里云百炼（DashScope）key，或 MiMo key |
 
@@ -106,6 +107,7 @@ npm start          # 跨平台；Windows 也可使用 start.bat
 | 后端 | 延迟 | 费用 | 隐私 | 说明 |
 |---|---|---|---|---|
 | **本地 FunASR 流式**（默认） | ~1.2–1.8 s | 免费 | ✅ 完全本地 | `Fun-ASR-Nano`（中英双优+标点）或 `paraformer` 真流式（纯中文，字幕更跟手） |
+| MOSS-Transcribe-Diarize 0.9B（实验） | 停顿后整句 | 免费 | ✅ 完全本地 | 50+ 语言、热词、长会议/说话人分离能力；本应用实时模式只取转写文本 |
 | 本地 Whisper turbo | Windows 支持的 GPU 上约 2 s | 免费 | ✅ 完全本地 | Windows 用 DirectML；其他平台 CPU 回退 |
 | 阿里云 `fun-asr-realtime` | 最佳 | 按量 | 云端 | 逐字流式，服务端断句带标点 |
 | MiMo 按段 | ~1 s/段 | 按量 | 云端 | 简单的按句云端转录 |
@@ -118,6 +120,13 @@ npm start          # 跨平台；Windows 也可使用 start.bat
 - **macOS**（项目 `.venv`，Apple MPS）：见 [docs/macos/SETUP.zh-CN.md](docs/macos/SETUP.zh-CN.md#本地流式-funasr默认转录后端)
 
 Python 装在别处时，设置环境变量 `MC_FUNASR_PYTHON` 指向完整路径即可。
+
+### MOSS-Transcribe-Diarize 0.9B（实验）
+
+MOSS 是整段生成模型，不是原生流式 ASR。本应用会在一句话结束后调用独立侧车 `tools/moss_asr_server.py`，避免高频重跑造成显存抖动。默认优先使用 CUDA BF16，CUDA 初始化或推理失败时回退 CPU；现有 FunASR 环境和默认设置完全不变。
+
+- **Windows**：见 [docs/windows/SETUP.zh-CN.md](docs/windows/SETUP.zh-CN.md#实验moss-transcribe-diarize-09b)
+- 自定义解释器：设置 `MC_MOSS_PYTHON`；强制设备可设置 `MC_MOSS_DEVICE=cuda:0` 或 `cpu`。
 
 ### 本地 Whisper turbo
 

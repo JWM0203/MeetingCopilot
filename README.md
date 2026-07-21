@@ -31,7 +31,7 @@ Live transcription of the other side · first-person teleprompter answers · cap
 ## Features
 
 - 🎧 **Hears the other side directly — no meeting bot.** Windows captures system loopback audio. macOS uses a selectable audio input (choose a virtual device such as BlackHole for meeting/system audio). An independent microphone channel transcribes your own voice separately.
-- ⚡ **Streaming ASR with 4 switchable backends** — local FunASR streaming (default: free, private; the Python sidecar is auto-spawned and reaped by the app), local Whisper turbo (offline fallback, DirectML GPU), Alibaba Cloud `fun-asr-realtime` (word-by-word cloud streaming), MiMo per-segment. Live gray partial subtitles appear while speech is still in progress.
+- ⚡ **Four switchable ASR backend families** — local sidecars (FunASR by default; experimental MOSS-Transcribe 0.9B), local Whisper turbo (offline fallback, DirectML GPU), Alibaba Cloud `fun-asr-realtime`, and MiMo per-segment. FunASR provides live partials; MOSS emits a finalized utterance after a pause.
 - 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle (`A:EN`) and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
 - 🌐 **Fully English or Chinese interface** — every label, tooltip, dialog and status message is available in both languages. Switch under *Settings → Appearance → UI Language*; first launch follows your OS language automatically. UI language and answer language are independent, so you can run an English UI while reading Chinese answers, or vice versa.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
@@ -68,6 +68,7 @@ Live transcription of the other side · first-person teleprompter answers · cap
 | Runtime | Node.js ≥ 20 and npm |
 | LLM | Any OpenAI-compatible API key — DeepSeek recommended (fast, cheap, prefix caching) |
 | Local streaming ASR *(default)* | Python 3.10/3.11 with `funasr` + `torch`; CUDA, Apple MPS, or CPU fallback |
+| Experimental MOSS ASR *(optional)* | isolated Python 3.12 env; NVIDIA CUDA BF16 first, automatic CPU fallback |
 | Local Whisper *(offline fallback)* | `whisper-large-v3-turbo` ONNX weights; DirectML on Windows, CPU elsewhere |
 | Cloud ASR *(optional)* | Alibaba Cloud DashScope API key, or a MiMo key |
 
@@ -107,6 +108,7 @@ each OS has its own guide under its own directory:
 | Backend | Latency | Cost | Privacy | Notes |
 |---|---|---|---|---|
 | **Local FunASR streaming** *(default)* | ~1.2–1.8 s | free | ✅ fully local | `Fun-ASR-Nano` (zh+en, punctuation) or `paraformer` true streaming (zh-only, snappier subtitles) |
+| MOSS-Transcribe-Diarize 0.9B *(experimental)* | finalized after a pause | free | ✅ fully local | 50+ languages, hotwords, long-form diarization; live mode consumes transcript text only |
 | Local Whisper turbo | ~2 s on supported Windows GPUs | free | ✅ fully local | DirectML on Windows; CPU fallback elsewhere |
 | Aliyun `fun-asr-realtime` | best | pay-per-use | cloud | word-by-word streaming, server-side punctuation |
 | MiMo per-segment | ~1 s/seg | pay-per-use | cloud | simple per-utterance cloud ASR |
@@ -123,6 +125,13 @@ auto` picks CUDA / Apple MPS / CPU with automatic CPU fallback.
 - **macOS** (project `.venv`, Apple MPS): see [docs/macos/SETUP.md](docs/macos/SETUP.md#local-streaming-funasr-default-asr-backend)
 
 If your Python lives elsewhere, set `MC_FUNASR_PYTHON` to its full path.
+
+### MOSS-Transcribe-Diarize 0.9B (experimental)
+
+MOSS is a one-shot generative model, not native streaming ASR. MeetingCopilot invokes the isolated `tools/moss_asr_server.py` sidecar after an utterance ends instead of repeatedly decoding a growing buffer. CUDA BF16 is attempted first and initialization failures fall back to CPU; the existing FunASR environment and default remain unchanged.
+
+- **Windows:** see [docs/windows/SETUP.md](docs/windows/SETUP.md#experimental-moss-transcribe-diarize-09b)
+- Custom interpreter: set `MC_MOSS_PYTHON`; force a device with `MC_MOSS_DEVICE=cuda:0` or `cpu`.
 
 ### Local Whisper turbo
 

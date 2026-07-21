@@ -1,8 +1,8 @@
 /**
- * Auto-managed local FunASR sidecar. When the streaming ASR backend points at
+ * Auto-managed local ASR sidecar. When the streaming ASR backend points at
  * ws://127.0.0.1:<port>, the app spawns tools/funasr_stream_server.py itself
- * (python from the `funasr` conda env) and reaps it on quit — selecting the
- * local preset in settings is all the user does; no manual .bat.
+ * for FunASR, or tools/moss_asr_server.py for MOSS-Transcribe-Diarize, and
+ * reaps it on quit — selecting the local preset is all the user does.
  *
  * If something already listens on the port (sidecar started manually or left
  * over), it is reused and never killed by us — we only reap processes we
@@ -14,6 +14,7 @@ import { existsSync } from 'fs';
 import { join, posix, win32 } from 'path';
 
 const DEFAULT_PYTHON = 'C:\\ProgramData\\miniconda3\\envs\\funasr\\python.exe';
+const DEFAULT_MOSS_PYTHON = 'C:\\ProgramData\\miniconda3\\envs\\moss-asr\\python.exe';
 /** model load + warm; first-ever run also downloads the selected model */
 const READY_TIMEOUT_MS = 15 * 60_000;
 
@@ -37,6 +38,24 @@ export function pythonCandidates(
   return [...new Set(candidates)];
 }
 
+export function mossPythonCandidates(
+  appRoot: string,
+  platform: string = process.platform,
+  explicit: string | undefined = process.env.MC_MOSS_PYTHON,
+): string[] {
+  const j = platform === 'win32' ? win32.join : posix.join;
+  const venv =
+    platform === 'win32'
+      ? j(appRoot, '.venv-moss', 'Scripts', 'python.exe')
+      : j(appRoot, '.venv-moss', 'bin', 'python');
+  const candidates = [
+    explicit,
+    venv,
+    ...(platform === 'win32' ? [DEFAULT_MOSS_PYTHON] : ['python3', 'python']),
+  ].filter((v): v is string => !!v);
+  return [...new Set(candidates)];
+}
+
 async function canRunPython(candidate: string): Promise<boolean> {
   return new Promise((resolve) => {
     execFile(candidate, ['--version'], { timeout: 5_000 }, (error) => resolve(!error));
@@ -55,8 +74,22 @@ export async function resolvePython(
   );
 }
 
-export function sidecarModelArg(model: string | undefined): 'nano' | 'paraformer' {
+export type LocalSidecarModel = 'nano' | 'paraformer' | 'moss';
+
+export function sidecarModelArg(model: string | undefined): LocalSidecarModel {
+  if (model?.toLowerCase().includes('moss')) return 'moss';
   return model?.toLowerCase().includes('paraformer') ? 'paraformer' : 'nano';
+}
+
+export function sidecarEnvironment(
+  modelArg: LocalSidecarModel,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (modelArg !== 'moss') return base;
+  // hf-xet stalled on the reviewed Windows/TUN setup before writing any
+  // weight bytes; regular Hub HTTP downloaded the same pinned snapshot
+  // immediately and supports the normal cache/resume path.
+  return { ...base, HF_HUB_DISABLE_XET: base.HF_HUB_DISABLE_XET || '1' };
 }
 
 export type SidecarStopPlan =
@@ -97,7 +130,7 @@ function portOpen(port: number, timeoutMs = 600): Promise<boolean> {
 export class FunasrSidecar {
   private proc: ChildProcess | null = null;
   private starting: Promise<void> | null = null;
-  private modelArg: 'nano' | 'paraformer' | null = null;
+  private modelArg: LocalSidecarModel | null = null;
 
   /** make sure something serves the port; spawn the python sidecar if needed */
   async ensureRunning(port: number, appRoot: string, model?: string): Promise<void> {
@@ -115,21 +148,31 @@ export class FunasrSidecar {
   private async spawnAndWait(
     port: number,
     appRoot: string,
-    modelArg: 'nano' | 'paraformer',
+    modelArg: LocalSidecarModel,
   ): Promise<void> {
-    const python = await resolvePython(pythonCandidates(appRoot));
-    const script = join(appRoot, 'tools', 'funasr_stream_server.py');
+    const isMoss = modelArg === 'moss';
+    const python = await resolvePython(
+      isMoss ? mossPythonCandidates(appRoot) : pythonCandidates(appRoot),
+    );
+    const script = join(appRoot, 'tools', isMoss ? 'moss_asr_server.py' : 'funasr_stream_server.py');
     if (!existsSync(script)) {
       throw new Error(`未找到 ${script}`);
     }
     console.log(
-      `[sidecar] spawning local funasr model=${modelArg} on :${port} (models load can take ~1 min)`,
+      `[sidecar] spawning local ASR model=${modelArg} on :${port} (first load can take several minutes)`,
     );
     return new Promise((resolve, reject) => {
       const proc = spawn(
         python,
-        [script, '--port', String(port), '--model', modelArg, '--device', 'auto'],
-        { cwd: appRoot, windowsHide: true, detached: process.platform !== 'win32' },
+        isMoss
+          ? [script, '--port', String(port), '--device', process.env.MC_MOSS_DEVICE || 'auto']
+          : [script, '--port', String(port), '--model', modelArg, '--device', 'auto'],
+        {
+          cwd: appRoot,
+          windowsHide: true,
+          detached: process.platform !== 'win32',
+          env: sidecarEnvironment(modelArg),
+        },
       );
       this.proc = proc;
       this.modelArg = modelArg;
@@ -143,20 +186,21 @@ export class FunasrSidecar {
       const timer = setTimeout(() => {
         settle(() => {
           void this.stop().finally(() =>
-            reject(new Error('本地 FunASR 引擎 15 分钟内未就绪（请检查模型下载和 Python 日志）')),
+            reject(new Error('本地 ASR 引擎 15 分钟内未就绪（请检查模型下载和 Python 日志）')),
           );
         });
       }, READY_TIMEOUT_MS);
       proc.stdout?.on('data', (d: Buffer) => {
         const s = d.toString();
         process.stdout.write(`[sidecar] ${s}`);
-        if (s.includes('FUNASR_READY')) settle(resolve);
+        if (s.includes(isMoss ? 'MOSS_ASR_READY' : 'FUNASR_READY')) settle(resolve);
       });
       proc.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
       proc.on('exit', (code) => {
         this.proc = null;
         this.modelArg = null;
-        settle(() => reject(new Error(`本地 FunASR 引擎退出（code ${code}）——检查 conda env "funasr"`)));
+        const envName = isMoss ? 'moss-asr' : 'funasr';
+        settle(() => reject(new Error(`本地 ASR 引擎退出（code ${code}）——检查 conda env "${envName}"`)));
       });
       proc.on('error', (e) => settle(() => reject(e)));
     });

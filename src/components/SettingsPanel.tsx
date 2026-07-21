@@ -66,6 +66,11 @@ const LOCAL_REALTIME_MODELS: { value: string; zh: string; en: string }[] = [
     zh: 'paraformer 流式（纯中文，字幕更跟手）',
     en: 'paraformer streaming (Chinese-only, snappier captions)',
   },
+  {
+    value: 'moss-transcribe-diarize',
+    zh: 'MOSS-Transcribe 0.9B（实验·整句·GPU 优先）',
+    en: 'MOSS-Transcribe 0.9B (experimental, per-utterance, GPU-first)',
+  },
 ];
 
 /**

@@ -14,7 +14,7 @@ const zh = {
   noApiKey: '未设置 API Key，请在设置里填入后重试',
   noApiKeyShort: '未设置 API Key',
   noVision: '未配置视觉模型：请在设置里填 Vision Base URL / 模型 / Key（如 MiMo / Gemini）',
-  sidecarFail: (msg: string) => `本地 FunASR 引擎启动失败：${msg}`,
+  sidecarFail: (msg: string) => `本地 ASR 引擎启动失败：${msg}`,
 };
 
 type MainDict = typeof zh;
@@ -28,7 +28,7 @@ const en: MainDict = {
   noApiKey: 'API Key not set — add one in Settings and retry',
   noApiKeyShort: 'API Key not set',
   noVision: 'Vision model not configured: set the Vision Base URL / model / key in Settings (e.g. MiMo / Gemini)',
-  sidecarFail: (msg: string) => `Local FunASR engine failed to start: ${msg}`,
+  sidecarFail: (msg: string) => `Local ASR engine failed to start: ${msg}`,
 };
 
 const dicts: Record<UiLang, MainDict> = { zh, en };

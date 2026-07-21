@@ -12,6 +12,7 @@ MeetingCopilot 诞生于 Windows：通过**系统回环音频**直接采集对�
 | 运行时 | Node.js ≥ 20 与 npm |
 | 大模型 | 任意 OpenAI 兼容 API key——推荐 DeepSeek |
 | 本地流式转录（默认） | Python 3.10 conda 环境 + `funasr` + `torch`，建议 NVIDIA 显卡 |
+| MOSS 实验转录（可选） | 独立 Python 3.12 conda 环境；NVIDIA CUDA BF16 优先，CPU 回退 |
 | 本地 Whisper（离线兜底） | `whisper-large-v3-turbo` ONNX 权重，支持 DirectML 的显卡 |
 | 云端转录（可选） | 阿里云百炼（DashScope）key，或 MiMo key |
 
@@ -44,6 +45,20 @@ pip install funasr modelscope websockets numpy
 ```
 
 应用会**自动拉起并回收**引擎（`tools/funasr_stream_server.py`，`ws://127.0.0.1:10097`）——在设置里选中预设即可。当前选中的模型首次运行时从 ModelScope 自动下载（paraformer 约 880 MB，Nano 约 1.7 GB）。Python 解释器的查找顺序：环境变量 `MC_FUNASR_PYTHON` → 项目 `.venv\Scripts\python.exe` → `C:\ProgramData\miniconda3\envs\funasr\python.exe` → PATH 里的 `python`。
+
+## 实验：MOSS-Transcribe-Diarize 0.9B
+
+MOSS 使用独立环境，避免其 `Transformers 5.x` 依赖影响现有 FunASR：
+
+```powershell
+C:/ProgramData/miniconda3/Scripts/conda.exe create -n moss-asr python=3.12 -y
+C:/ProgramData/miniconda3/Scripts/conda.exe run -n moss-asr python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+C:/ProgramData/miniconda3/Scripts/conda.exe run -n moss-asr python -m pip install -r requirements-moss.txt
+```
+
+在设置中选择“MOSS-Transcribe 0.9B”后，应用自动启动 `tools/moss_asr_server.py`。模型权重首次运行从 Hugging Face 下载（BF16 权重约 1.7 GB）。设备策略为 CUDA BF16 → CPU FP32；可用 `MC_MOSS_PYTHON` 指定解释器，或用 `MC_MOSS_DEVICE=cuda:0` / `cpu` 强制设备。
+
+> MOSS 不是原生流式模型。为保证显存稳定，本应用在检测到约 700 ms 停顿后做一次整句推理，不显示逐字 partial；它更适合与 FunASR 做准确率对照，而不是追求最低首字延迟。
 
 ## 本地 Whisper turbo（离线兜底）
 

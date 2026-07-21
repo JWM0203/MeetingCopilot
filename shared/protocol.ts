@@ -42,7 +42,7 @@ export interface SettingsFile {
     language: AsrLanguage;
     /** override models dir; default %APPDATA%/MeetingCopilot/models */
     modelsDir?: string;
-    /** 'local-realtime' = FunASR streaming via the auto-spawned local sidecar;
+    /** 'local-realtime' = auto-spawned local sidecar (FunASR or MOSS);
      * 'local' = whisper turbo on-device; 'cloud' = OpenAI-compatible ASR API;
      * 'cloud-realtime' = remote WebSocket streaming (e.g. Aliyun fun-asr-realtime) */
     backend?: 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
@@ -60,8 +60,8 @@ export interface SettingsFile {
       model?: string;
       apiKeyEnc?: string;
     };
-    /** local streaming sidecar (backend === 'local-realtime'); fixed localhost
-     * endpoint, only the model is chosen ('fun-asr-nano' | 'paraformer-zh-streaming') */
+    /** local sidecar (backend === 'local-realtime'); fixed localhost endpoint,
+     * model is FunASR Nano, paraformer streaming, or experimental MOSS */
     localRealtime?: {
       model?: string;
     };

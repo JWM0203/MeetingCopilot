@@ -145,7 +145,7 @@ function bootstrap(): void {
     if (port) {
       try {
         await sidecar.ensureRunning(port, app.getAppPath(), opts.cloud?.model);
-        console.log(`[sidecar] local funasr ready on :${port}`);
+        console.log(`[sidecar] local ASR ready on :${port}`);
       } catch (e) {
         const message = T().sidecarFail((e as Error).message);
         console.error(`[sidecar] ${message}`);
