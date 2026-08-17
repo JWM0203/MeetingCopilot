@@ -12,9 +12,13 @@ Live transcription of the other side · first-person teleprompter answers · cap
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-China%20mirror-C71D23?style=flat-square&logo=gitee" alt="Gitee mirror"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50ddc800000000080027a6?source=webshare&xhsshare=pc_web&xsec_token=YBsteWYkixo34xXwfYeNXKL1SFbiOeg7mxQAZyq7wQIc4=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
-[简体中文](README.zh-CN.md) · [Features](#features) · [Quick Start](#quick-start) · [Platform Setup](#platform-setup) · [ASR Backends](#asr-backends) · [License](#license)
+[简体中文](README.zh-CN.md) · [Download](#download) · [Features](#features) · [Quick Start](#quick-start) · [Platform Setup](#platform-setup) · [ASR Backends](#asr-backends) · [License](#license)
 
 </div>
+
+## Download
+
+**[⬇ Download the latest release](https://github.com/JWM0203/MeetingCopilot/releases/latest)** — Windows installer and portable build. No Node.js and no Python required: install, add your LLM API key, and start. *(The first packaged release ships as `v0.2.0-beta`; until then, follow [Quick Start](#quick-start) to run from source.)*
 
 ---
 

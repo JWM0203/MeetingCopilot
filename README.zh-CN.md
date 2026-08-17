@@ -12,9 +12,13 @@
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-国内镜像-C71D23?style=flat-square&logo=gitee" alt="Gitee 国内镜像"></a>
 <a href="https://www.xiaohongshu.com/discovery/item/6a50ddc800000000080027a6?source=webshare&xhsshare=pc_web&xsec_token=YBsteWYkixo34xXwfYeNXKL1SFbiOeg7mxQAZyq7wQIc4=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
-[English](README.md) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [分平台部署](#分平台部署) · [转录后端](#转录后端) · [协议](#协议)
+[English](README.md) · [下载](#下载) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [分平台部署](#分平台部署) · [转录后端](#转录后端) · [协议](#协议)
 
 </div>
+
+## 下载
+
+**[⬇ 下载最新版本](https://github.com/JWM0203/MeetingCopilot/releases/latest)** —— 提供 Windows 安装包与免安装版。普通用户无需安装 Node.js 和 Python：装好后填入自己的大模型 API Key 即可使用。（首个打包版本为 `v0.2.0-beta`；在此之前请按[快速开始](#快速开始)从源码运行。）
 
 ---
 
