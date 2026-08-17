@@ -212,7 +212,7 @@ const zh = {
     fontLarge: '大（19px）',
     otherSection: '其他',
     otherHint:
-      '麦克风开关/设备、答语言、多模态切换都在标题栏；简历/岗位JD 在右栏「📄简历」「📋JD」按会话导入（支持 docx/pdf）。',
+      '麦克风开关与多模态切换在标题栏；简历/岗位JD 在右栏「📄简历」「📋JD」按会话导入（支持 docx/pdf）。',
     hotkeyToggle: '呼出/隐藏快捷键',
     hotkeyShot: '截图快捷键（框选截图问答，如 Control+Shift+S）',
     save: '保存',
@@ -429,7 +429,7 @@ const en: Dict = {
     fontLarge: 'Large (19px)',
     otherSection: 'Other',
     otherHint:
-      'Mic toggle/device, answer language and Text/Vision live in the title bar; import the resume/JD per session via “📄Resume” “📋JD” in the right pane (docx/pdf supported).',
+      'The mic toggle and Text/Vision live in the title bar; import the resume/JD per session via “📄Resume” “📋JD” in the right pane (docx/pdf supported).',
     hotkeyToggle: 'Show/hide hotkey',
     hotkeyShot: 'Screenshot hotkey (region screenshot Q&A, e.g. Control+Shift+S)',
     save: 'Save',
