@@ -27,7 +27,8 @@
     "smoke:llm": "vite-node tools/llm-smoke.ts",
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
-    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs"
+    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
+    "smoke:packaged": "node tools/packaged-smoke.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
