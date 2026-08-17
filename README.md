@@ -58,6 +58,14 @@ The first launch opens a setup wizard — a normal, screen-shareable window, so 
 4. **Connection test** — a live level meter proves the app can hear your computer, plus the optional microphone channel and a checklist of what is still missing.
 5. **Done** — the whole plan is written as one settings update and the main window opens.
 
+![Setup wizard, step 2: choosing a plan](docs/setup-wizard-en.png)
+
+*Step 2 "Plan": each card states plainly how many platforms you have to sign up for and how many keys it needs; "Low latency" is preselected. Local backends stay out of the way behind the "Advanced setup and local modes" link.*
+
+![Setup wizard, step 3: pasting the API keys](docs/setup-keys-en.png)
+
+*Step 3 "Services": one card per service, with the official key page, the official docs and a step-by-step guide right inside it — no hunting through a browser. Paste, press "Save and test connection", and the key is encrypted by the OS credential store before it touches disk.*
+
 Then: play some speech, hit **▶ Start**, click **⚡Ans** on any line. Full walkthrough in [QUICK_START.en.md](docs/user/QUICK_START.en.md).
 
 You can reopen the wizard any time from *⚙ Settings → Run the setup wizard again*, and the in-app **Help & guides** (tray menu or Settings) has the same content offline.
