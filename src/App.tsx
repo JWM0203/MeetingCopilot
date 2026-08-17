@@ -22,6 +22,7 @@ import { MicCapture, listMics } from './audio/micCapture';
 import { TranscriptPanel } from './components/TranscriptPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ServiceHealthPanel } from './components/ServiceHealthPanel';
+import { DiagnosticsPanel } from './components/DiagnosticsPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
@@ -74,6 +75,7 @@ export function App() {
   const [capturing, setCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHealth, setShowHealth] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [hud, setHud] = useState<HudStats>({ count: 0 });
   const [continuous, setContinuous] = useState(false);
@@ -795,10 +797,15 @@ export function App() {
             setShowHealth(false);
             setShowSettings(true);
           }}
-          onOpenDiagnostics={() => setShowHealth(false)}
+          onOpenDiagnostics={() => {
+            setShowHealth(false);
+            setShowDiagnostics(true);
+          }}
           onSettingsRefreshed={setSettings}
         />
       )}
+
+      {showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 
       {showSettings && settings && (
         <SettingsPanel
@@ -812,6 +819,10 @@ export function App() {
           onRerunWizard={() => {
             setShowSettings(false);
             void window.mc.rerunOnboarding();
+          }}
+          onOpenDiagnostics={() => {
+            setShowSettings(false);
+            setShowDiagnostics(true);
           }}
         />
       )}

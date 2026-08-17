@@ -810,6 +810,27 @@ body {
   border-color: var(--tag-wait-text);
 }
 
+/* ---------- diagnostics ----------
+ * read-only on purpose: an editable box invites "cleaning up" a report that is
+ * meant to describe the machine as it is */
+.diagnostics-report {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  background: var(--input-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  color: var(--text-body);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+  outline: none;
+  user-select: text;
+}
+
 /* ---------- status bar ---------- */
 .statusbar {
   display: flex;

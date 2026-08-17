@@ -169,6 +169,20 @@ const zh = {
     hintNeedsSetup: '尚未配置任何云服务。打开配置向导可以一步步完成设置。',
     answersDisabled: '尚未配置 AI 回答服务：请在设置或配置向导中添加 API Key。',
   },
+  diagnostics: {
+    title: '诊断信息',
+    intro: '报告在本地生成，不包含 API Key、简历、转写等敏感内容。',
+    loading: '正在生成…',
+    copy: '复制诊断信息',
+    copied: '已复制到剪贴板。',
+    copyFail: (msg: string) => `复制失败：${msg}`,
+    openLogs: '打开日志文件夹',
+    openLogsFail: '无法打开数据文件夹。',
+    issues: '前往 GitHub Issues',
+    refresh: '重新生成',
+    close: '关闭',
+    loadFail: (msg: string) => `生成诊断信息失败：${msg}`,
+  },
   settings: {
     commonSection: '常用设置',
     advancedSection: '高级设置',
@@ -458,6 +472,21 @@ const en: Dict = {
       'No cloud service is configured yet. The setup wizard walks you through it step by step.',
     answersDisabled:
       'AI answers are not configured yet — add an API key in Settings or the setup wizard.',
+  },
+  diagnostics: {
+    title: 'Diagnostics',
+    intro:
+      'The report is generated locally and contains no API keys, resume text or transcripts.',
+    loading: 'Generating…',
+    copy: 'Copy diagnostics',
+    copied: 'Copied to the clipboard.',
+    copyFail: (msg: string) => `Could not copy: ${msg}`,
+    openLogs: 'Open the data folder',
+    openLogsFail: 'The data folder could not be opened.',
+    issues: 'Go to GitHub Issues',
+    refresh: 'Regenerate',
+    close: 'Close',
+    loadFail: (msg: string) => `Could not build the diagnostics report: ${msg}`,
   },
   settings: {
     commonSection: 'Common settings',

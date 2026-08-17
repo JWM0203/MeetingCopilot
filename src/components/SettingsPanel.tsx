@@ -118,12 +118,15 @@ export function SettingsPanel({
   onSaved,
   onClose,
   onRerunWizard,
+  onOpenDiagnostics,
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
   onClose: () => void;
   /** opens the first-run wizard again (main window stays alive) */
   onRerunWizard?: () => void;
+  /** 高级 entry into the local support report */
+  onOpenDiagnostics?: () => void;
 }) {
   const t = useT();
   const [baseUrl, setBaseUrl] = useState(settings.llm.baseUrl);
@@ -663,6 +666,15 @@ export function SettingsPanel({
       <details className="settings-advanced">
         <summary>{t.settings.advancedSection}</summary>
         <div className="settings-hint">{t.settings.advancedHint}</div>
+
+        {onOpenDiagnostics && (
+          <div className="settings-row">
+            <button className="btn" onClick={onOpenDiagnostics}>
+              {t.diagnostics.title}
+            </button>
+            <span className="settings-inline-hint">{t.diagnostics.intro}</span>
+          </div>
+        )}
 
         <div className="settings-section">{t.settings.textSection}</div>
         <div className="settings-row">
