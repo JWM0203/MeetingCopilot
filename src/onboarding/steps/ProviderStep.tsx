@@ -4,11 +4,22 @@
  * The 「极简配置」plan with the reuse checkbox renders ONE card whose save
  * writes the same plaintext into both slots in a SINGLE settings patch, so the
  * two ciphertexts are produced independently and no shared plaintext copy is
- * ever kept in the renderer.
+ * ever kept in the renderer. That card also runs TWO connection tests with the
+ * same candidate key (text LLM first, then segment ASR) and only saves when
+ * both came back OK — one key that only half works is exactly the failure this
+ * plan is prone to.
  */
-import { ApiKeyCard } from '../components/ApiKeyCard';
+import { ApiKeyCard, type CardTest } from '../components/ApiKeyCard';
 import { planDefinition, type KeySlot } from '../../../shared/onboardingPlans';
-import type { OnboardingPlan, PublicSettings, UiLang } from '../../../shared/protocol';
+import { orderTestTargets, targetFromPreset } from '../../../shared/providerTestRequests';
+import type {
+  OnboardingPlan,
+  ProviderSlot,
+  ProviderTestRequest,
+  ProviderTestResult,
+  PublicSettings,
+  UiLang,
+} from '../../../shared/protocol';
 import type { SetupDict } from '../i18n';
 
 export interface ProviderStepProps {
@@ -19,6 +30,10 @@ export interface ProviderStepProps {
   settings: PublicSettings;
   /** writes the key into every listed slot with one settings patch */
   onSaveKey: (slots: KeySlot[], apiKey: string) => Promise<void>;
+  /** one real provider round-trip (window.mcSetup.providerTest) */
+  onTest: (req: ProviderTestRequest) => Promise<ProviderTestResult>;
+  /** 暂时保存并稍后重试: the slots hold a key nothing has verified */
+  onSavedUntested: (slots: KeySlot[]) => void;
   onOpenExternal: (url: string) => Promise<boolean>;
   onReadClipboard: () => Promise<string>;
 }
@@ -45,6 +60,8 @@ export function ProviderStep({
   shareMimoKey,
   settings,
   onSaveKey,
+  onTest,
+  onSavedUntested,
   onOpenExternal,
   onReadClipboard,
 }: ProviderStepProps) {
@@ -57,6 +74,15 @@ export function ProviderStep({
       : plan === 'transcription-only'
         ? t.provider.subtitleTranscription
         : t.provider.subtitleRecommended;
+
+  const labelForSlot = (slot: ProviderSlot): string =>
+    slot === 'llm' ? t.provider.rowLlmTest : t.provider.rowAsrTest;
+
+  /** probes for one card, in the order they should be run */
+  const testsFor = (slots: KeySlot[]): CardTest[] =>
+    orderTestTargets(
+      slots.map((slot) => targetFromPreset(slot === 'llm' ? def.llm!.preset : def.asr!.preset, slot)),
+    ).map((target) => ({ id: target.slot, label: labelForSlot(target.slot), target }));
 
   return (
     <div>
@@ -77,7 +103,10 @@ export function ProviderStep({
           t={t}
           lang={lang}
           weakCrypto={settings.weakCrypto}
+          tests={testsFor([def.llm.slot, def.asr.slot])}
+          runTest={onTest}
           onSave={(key) => onSaveKey([def.asr!.slot, def.llm!.slot], key)}
+          onSavedUntested={() => onSavedUntested([def.asr!.slot, def.llm!.slot])}
           onOpenExternal={onOpenExternal}
           onReadClipboard={onReadClipboard}
         />
@@ -91,7 +120,10 @@ export function ProviderStep({
               t={t}
               lang={lang}
               weakCrypto={settings.weakCrypto}
+              tests={testsFor([def.asr.slot])}
+              runTest={onTest}
               onSave={(key) => onSaveKey([def.asr!.slot], key)}
+              onSavedUntested={() => onSavedUntested([def.asr!.slot])}
               onOpenExternal={onOpenExternal}
               onReadClipboard={onReadClipboard}
             />
@@ -104,7 +136,10 @@ export function ProviderStep({
               t={t}
               lang={lang}
               weakCrypto={settings.weakCrypto}
+              tests={testsFor([def.llm.slot])}
+              runTest={onTest}
               onSave={(key) => onSaveKey([def.llm!.slot], key)}
+              onSavedUntested={() => onSavedUntested([def.llm!.slot])}
               onOpenExternal={onOpenExternal}
               onReadClipboard={onReadClipboard}
             />

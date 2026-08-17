@@ -1,6 +1,7 @@
 /**
  * One provider = one card: where to get the key (official page + an inline
- * step-by-step guide from the catalog) and where to paste it.
+ * step-by-step guide from the catalog), where to paste it, and — since Phase 3
+ * — what happened when we actually tried it.
  *
  * Key hygiene rules (SPEC §C step 3) implemented here:
  *  - the field is password-masked by default, with an explicit 显示/隐藏 toggle;
@@ -10,11 +11,20 @@
  *  - the `sk-` style prefix is a HINT — it never prevents saving;
  *  - the plaintext lives in React state only until the save resolves, then the
  *    state is cleared and the card shows 「已配置」plus the main-side hint.
+ *
+ * Test-before-save (Phase 3b): 「保存并测试连接」 sends the candidate key to the
+ * main process FIRST and only persists it once every probe came back OK. A
+ * failure leaves the key unsaved and in the input, so 「重新填写」 is a real
+ * option — with 「暂时保存并稍后重试」 as the deliberate escape hatch for a
+ * provider that is merely down right now.
  */
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { sanitizeApiKeyInput } from '../../../shared/keyInput';
+import { candidateKeyTest, type EndpointTarget } from '../../../shared/providerTestRequests';
 import type { ProviderPreset } from '../../../shared/providerCatalog';
-import type { UiLang } from '../../../shared/protocol';
+import type { ProviderTestRequest, ProviderTestResult, UiLang } from '../../../shared/protocol';
+import { ConnectionResult } from '../../components/providers/ConnectionResult';
+import { connectionResultCopy } from '../connectionCopy';
 import type { SetupDict } from '../i18n';
 
 type NoticeKind = 'info' | 'ok' | 'warn' | 'err';
@@ -30,6 +40,21 @@ const NOTICE_CLASS: Record<NoticeKind, string> = {
   err: 'key-notice key-notice-err',
 };
 
+/** one probe this card runs; more than one = a single key serving two services */
+export interface CardTest {
+  id: string;
+  /** row label, only rendered when the card runs several probes */
+  label?: string;
+  target: EndpointTarget;
+}
+
+interface ProbeOutcome {
+  id: string;
+  label?: string;
+  result: ProviderTestResult;
+  at: number;
+}
+
 export interface ApiKeyCardProps {
   title: string;
   preset: ProviderPreset;
@@ -44,8 +69,14 @@ export interface ApiKeyCardProps {
   description?: string;
   /** the OS credential store is unavailable: confirm before persisting a key */
   weakCrypto: boolean;
+  /** probes run in order, sequentially, against the SAME candidate key */
+  tests: CardTest[];
+  /** one real provider round-trip; never throws for a provider-side failure */
+  runTest: (req: ProviderTestRequest) => Promise<ProviderTestResult>;
   /** persists the sanitized plaintext; rejects with a message on failure */
   onSave: (apiKey: string) => Promise<void>;
+  /** the user chose 暂时保存并稍后重试 — saved, but no passing test behind it */
+  onSavedUntested?: () => void;
   onOpenExternal: (url: string) => Promise<boolean>;
   onReadClipboard: () => Promise<string>;
   /** extra controls rendered under the header (e.g. the shared-key checkbox) */
@@ -62,7 +93,10 @@ export function ApiKeyCard({
   name: nameOverride,
   description: descriptionOverride,
   weakCrypto,
+  tests,
+  runTest,
   onSave,
+  onSavedUntested,
   onOpenExternal,
   onReadClipboard,
   children,
@@ -72,10 +106,15 @@ export function ApiKeyCard({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [justSaved, setJustSaved] = useState(false);
   const [tutorial, setTutorial] = useState(false);
   /** the weak-crypto confirmation is pending; nothing has been persisted yet */
   const [confirmWeak, setConfirmWeak] = useState(false);
+  /** id of the probe currently in flight */
+  const [running, setRunning] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<ProbeOutcome[]>([]);
+  /** the sanitized key whose test failed — kept so 暂时保存 can still store it */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const help = preset.help;
   const steps = lang === 'zh' ? help.stepsZh : help.stepsEn;
@@ -84,6 +123,7 @@ export function ApiKeyCard({
   const name = nameOverride ?? (lang === 'zh' ? preset.nameZh : preset.nameEn);
   const description =
     descriptionOverride ?? (lang === 'zh' ? preset.descriptionZh : preset.descriptionEn);
+  const copy = connectionResultCopy(t);
 
   /** turns the sanitizer's warning list into one 「已自动去除…」 notice */
   const sanitizeNotices = (warnings: readonly string[]): Notice[] => {
@@ -130,38 +170,89 @@ export function ApiKeyCard({
       setConfirmWeak(true);
       return;
     }
-    void save();
+    void saveAndTest();
   };
 
-  const save = async () => {
+  /** the only place a plaintext key is handed to the main process */
+  const persist = async (apiKey: string, base: Notice[], untested: boolean) => {
+    setBusy(true);
+    try {
+      await onSave(apiKey);
+      // the plaintext never outlives the save
+      setValue('');
+      setReveal(false);
+      setEditing(false);
+      setFailedKey(null);
+      if (untested) onSavedUntested?.();
+      setNotices([
+        ...base,
+        untested
+          ? { kind: 'warn', text: t.provider.savedUntested }
+          : { kind: 'ok', text: t.provider.savedOk },
+      ]);
+    } catch (e) {
+      setNotices([...base, { kind: 'err', text: t.provider.saveFail((e as Error).message) }]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Probes run one after another on purpose: the mimo-simple plan tests ONE
+   * freshly created key against two services, and two parallel first requests
+   * are a reliable way to collect a rate-limit instead of a verdict.
+   */
+  const saveAndTest = async () => {
     setConfirmWeak(false);
     const clean = sanitizeApiKeyInput(value);
     if (!clean.value) {
       setNotices([{ kind: 'warn', text: t.provider.emptyKey }]);
       return;
     }
-    const next = sanitizeNotices(clean.warnings);
+    const base = sanitizeNotices(clean.warnings);
     if (help.keyFormatHint && !clean.value.startsWith(help.keyFormatHint)) {
-      next.push({ kind: 'warn', text: t.provider.prefixHint(help.keyFormatHint) });
+      base.push({ kind: 'warn', text: t.provider.prefixHint(help.keyFormatHint) });
     }
+    setNotices(base);
+    setOutcomes([]);
+    setFailedKey(null);
     setBusy(true);
+
+    const collected: ProbeOutcome[] = [];
     try {
-      await onSave(clean.value);
-      // the plaintext never outlives the save
-      setValue('');
-      setReveal(false);
-      setEditing(false);
-      setJustSaved(true);
-      next.push({ kind: 'ok', text: t.provider.savedPending });
-      setNotices(next);
+      for (const probe of tests) {
+        setRunning(probe.id);
+        const result = await runTest(candidateKeyTest(probe.target, clean.value));
+        collected.push({ id: probe.id, label: probe.label, result, at: Date.now() });
+        setOutcomes([...collected]);
+      }
     } catch (e) {
-      setNotices([...next, { kind: 'err', text: t.provider.saveFail((e as Error).message) }]);
-    } finally {
+      // the IPC itself failed (the provider's own failures come back as a result)
+      setRunning(null);
       setBusy(false);
+      setFailedKey(clean.value);
+      setNotices([...base, { kind: 'err', text: t.provider.testCrashed((e as Error).message) }]);
+      return;
     }
+    setRunning(null);
+
+    if (collected.every((o) => o.result.ok)) {
+      await persist(clean.value, base, false);
+      return;
+    }
+    setFailedKey(clean.value);
+    setBusy(false);
   };
 
   const showInput = !configured || editing;
+  const multi = tests.length > 1;
+  /** rows for probes that have not produced a verdict yet, so a dual test shows
+   * both services from the first click instead of popping a second row later */
+  const rows: (ProbeOutcome | { id: string; label?: string; result: null; at?: number })[] =
+    tests.map((probe) => outcomes.find((o) => o.id === probe.id) ?? { ...probe, result: null });
+  /** the recovery buttons belong to the run, not to each row — a dual test that
+   * fails twice must not offer 「暂时保存」 twice */
+  const firstFailedId = rows.find((r) => r.result && !r.result.ok)?.id;
 
   return (
     <section className="setup-card">
@@ -225,6 +316,7 @@ export function ApiKeyCard({
           <>
             <div className="key-input-row">
               <input
+                ref={inputRef}
                 className="setup-input"
                 type={reveal ? 'text' : 'password'}
                 value={value}
@@ -248,7 +340,7 @@ export function ApiKeyCard({
                   <button className="btn btn-sm" onClick={() => setConfirmWeak(false)}>
                     {t.provider.weakCryptoBack}
                   </button>
-                  <button className="btn btn-sm" onClick={() => void save()}>
+                  <button className="btn btn-sm" onClick={() => void saveAndTest()}>
                     {t.provider.weakCryptoContinue}
                   </button>
                 </div>
@@ -256,7 +348,7 @@ export function ApiKeyCard({
             )}
             <div className="key-actions" style={{ marginTop: 10 }}>
               <button className="btn btn-primary" disabled={busy} onClick={requestSave}>
-                {busy ? t.provider.saving : t.provider.saveAndTest}
+                {running ? t.provider.testing : busy ? t.provider.saving : t.provider.saveAndTest}
               </button>
               {configured && (
                 <button
@@ -266,6 +358,7 @@ export function ApiKeyCard({
                     setValue('');
                     setNotices([]);
                     setConfirmWeak(false);
+                    setFailedKey(null);
                   }}
                 >
                   {t.provider.cancelReplace}
@@ -282,17 +375,59 @@ export function ApiKeyCard({
               className="btn btn-sm"
               onClick={() => {
                 setEditing(true);
-                setJustSaved(false);
                 setNotices([]);
+                setOutcomes([]);
+                setFailedKey(null);
               }}
             >
               {t.provider.replaceKey}
             </button>
           </div>
         )}
-        {justSaved && !showInput && notices.length === 0 && (
-          <div className={NOTICE_CLASS.ok}>{t.provider.savedPending}</div>
-        )}
+
+        {rows.map((row) => (
+          <ConnectionResult
+            key={row.id}
+            copy={copy}
+            label={multi ? row.label : undefined}
+            result={row.result}
+            testing={running === row.id}
+            message={
+              row.result ? (lang === 'zh' ? row.result.messageZh : row.result.messageEn) : undefined
+            }
+            hint={row.result ? t.provider.actionHints[row.result.code] : undefined}
+            at={row.at}
+          >
+            {row.id === firstFailedId && (
+              <>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setEditing(true);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                >
+                  {t.provider.retryEdit}
+                </button>
+                {help.keyUrl && (
+                  <button className="btn btn-sm" onClick={() => void openLink(help.keyUrl)}>
+                    {t.provider.openKeyPage}
+                  </button>
+                )}
+                {failedKey && (
+                  <button
+                    className="btn btn-sm"
+                    disabled={busy}
+                    onClick={() => void persist(failedKey, [], true)}
+                  >
+                    {t.provider.saveUntested}
+                  </button>
+                )}
+              </>
+            )}
+          </ConnectionResult>
+        ))}
+
         {notices.map((n, i) => (
           <div key={`${n.kind}-${i}`} className={NOTICE_CLASS[n.kind]}>
             {n.text}

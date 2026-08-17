@@ -19,6 +19,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   AppInfo,
   OnboardingPlan,
+  ProviderTestRequest,
+  ProviderTestResult,
   PublicSettings,
   ThemeMode,
   UiLang,
@@ -80,6 +82,8 @@ export function OnboardingApp() {
   const [themDeviceId, setThemDeviceId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** slots the user chose to keep despite a failed / skipped connection test */
+  const [savedUntested, setSavedUntested] = useState<KeySlot[]>([]);
 
   const t: SetupDict = useMemo(() => getSetupDict(lang), [lang]);
 
@@ -146,6 +150,31 @@ export function OnboardingApp() {
       .map((slot) => keyPatchForSlot(slot, apiKey))
       .reduce((acc, p) => mergeKeyPatches(acc, p));
     setSettings(await window.mcSetup.setSettings(patch));
+    // a fresh key invalidates the "saved but untested" flag for those slots
+    setSavedUntested((list) => list.filter((s) => !slots.includes(s)));
+  }, []);
+
+  /**
+   * One real provider round-trip. The main process records the verdict into the
+   * slot's `verification` through a DEDICATED store write (never a settings
+   * patch — that would restart the ASR engine), so the wizard re-reads the
+   * public settings afterwards to show the state that survives a restart.
+   */
+  const runTest = useCallback(
+    async (req: ProviderTestRequest): Promise<ProviderTestResult> => {
+      const result = await window.mcSetup.providerTest(req);
+      try {
+        setSettings(await window.mcSetup.getSettings());
+      } catch {
+        /* the verdict is already in hand; a stale snapshot is not worth failing */
+      }
+      return result;
+    },
+    [],
+  );
+
+  const markSavedUntested = useCallback((slots: KeySlot[]) => {
+    setSavedUntested((list) => [...new Set([...list, ...slots])]);
   }, []);
 
   /** 高级配置与本地模式: complete with NO settings change */
@@ -249,6 +278,8 @@ export function OnboardingApp() {
             shareMimoKey={shareMimoKey}
             settings={settings}
             onSaveKey={saveKey}
+            onTest={runTest}
+            onSavedUntested={markSavedUntested}
             onOpenExternal={(url) => window.mcSetup.openExternal(url)}
             onReadClipboard={() => window.mcSetup.readClipboardText()}
           />
@@ -256,9 +287,12 @@ export function OnboardingApp() {
         {step === 4 && (
           <ConnectionStep
             t={t}
+            lang={lang}
             plan={plan}
             settings={settings}
             platform={info?.platform ?? window.mcSetup.platform}
+            onTest={runTest}
+            savedUntested={savedUntested}
             audioOk={audioOk}
             onAudioOk={setAudioOk}
             micEnabled={micEnabled}
