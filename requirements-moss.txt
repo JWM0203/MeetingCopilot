@@ -1,0 +1,5 @@
+# MOSS-Transcribe-Diarize integration, isolated from the existing FunASR env.
+# Official source pinned to the reviewed upstream main revision (2026-07-21).
+# The server also pins the matching Hugging Face model snapshot in code.
+moss-transcribe-diarize @ git+https://github.com/OpenMOSS/MOSS-Transcribe-Diarize.git@40cf8549c6b5634ba36b7e817cf523b5ad400c2e
+websockets==16.1

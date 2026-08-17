@@ -343,6 +343,24 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* one-time pointer at the setup wizard for profiles migrated from v1 */
+.upgrade-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.upgrade-banner span {
+  margin-right: auto;
+}
+
 /* transient KB parse warning (e.g. scanned PDF with no text layer) */
 .kb-notice {
   padding: 4px 10px;
@@ -652,6 +670,252 @@ body {
   justify-content: flex-end;
 }
 
+/* 常用 / 高级 split (Phase 2): everything that needs a URL, a model id or a
+ * proxy hides behind this disclosure so the common panel stays short. */
+.settings-advanced {
+  margin: 4px 0 12px;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.settings-advanced > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--section-text);
+  letter-spacing: 0.4px;
+  list-style: none;
+}
+
+.settings-advanced > summary::before {
+  content: '▸ ';
+}
+
+.settings-advanced[open] > summary::before {
+  content: '▾ ';
+}
+
+.settings-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-advanced[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* API-key status line: 已配置 ••••1234 [更换][删除][测试] */
+.key-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.key-mask {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-inline-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ---------- connection-test verdict (shared component) ----------
+ * src/components/providers/ConnectionResult.tsx renders in BOTH renderer
+ * entries, so these class names exist here and in src/onboarding/setup.css,
+ * each against its own theme tokens. */
+.conn-result {
+  margin-top: 6px;
+}
+
+.conn-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.conn-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.conn-msg {
+  font-size: 11px;
+  color: var(--text-body);
+}
+
+.conn-hint {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.conn-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.conn-detail-toggle {
+  margin-top: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--accent-text);
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.conn-detail {
+  margin-top: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-1);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.conn-detail-k {
+  display: inline-block;
+  min-width: 64px;
+  color: var(--text-faint);
+}
+
+.conn-detail-v {
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* blocking warning shown BEFORE a key is handed to the main process */
+.settings-warn {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--tag-wait-text);
+  background: var(--tag-wait-bg);
+  border: 1px solid var(--on-border);
+  border-color: var(--tag-wait-text);
+}
+
+/* ---------- diagnostics ----------
+ * read-only on purpose: an editable box invites "cleaning up" a report that is
+ * meant to describe the machine as it is */
+.diagnostics-report {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  background: var(--input-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  color: var(--text-body);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+  outline: none;
+  user-select: text;
+}
+
+/* ---------- help center ----------
+ * Same overlay chrome as .settings (it reuses that class), plus collapsible
+ * topics. Everything is local text: no iframe, no remote content. */
+.help-panel {
+  max-height: 66vh;
+  line-height: 1.65;
+}
+
+.help-topic {
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.help-topic > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  list-style: none;
+}
+
+.help-topic > summary::before {
+  content: '▸ ';
+  color: var(--text-muted);
+}
+
+.help-topic[open] > summary::before {
+  content: '▾ ';
+}
+
+.help-topic > summary::-webkit-details-marker {
+  display: none;
+}
+
+.help-body {
+  margin-top: 8px;
+}
+
+.help-lines {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--text-body);
+}
+
+.help-lines li {
+  margin-bottom: 5px;
+}
+
+.help-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--section-text);
+  margin: 8px 0 4px;
+}
+
+.help-note {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+.help-provider {
+  border-top: 1px solid var(--border-1);
+  padding-top: 8px;
+  margin-top: 10px;
+}
+
+.help-provider-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 /* ---------- status bar ---------- */
 .statusbar {
   display: flex;
@@ -696,6 +960,63 @@ body {
 .tag-err {
   background: var(--tag-err-bg);
   color: var(--tag-err-text);
+}
+
+/* ---------- service health ----------
+ * Compact chips in the status bar; the whole group is ONE button so the bar
+ * gains a single affordance instead of three. */
+.health-chips {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.health-chip {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  white-space: nowrap;
+}
+
+.health-chip.is-ok {
+  background: var(--tag-ok-bg);
+  color: var(--tag-ok-text);
+}
+
+.health-chip.is-busy {
+  background: var(--tag-wait-bg);
+  color: var(--tag-wait-text);
+}
+
+.health-chip.is-bad {
+  background: var(--tag-err-bg);
+  color: var(--tag-err-text);
+}
+
+.health-panel .health-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.health-name {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 74px;
+}
+
+.health-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .status-hud {

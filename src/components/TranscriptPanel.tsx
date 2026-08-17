@@ -19,12 +19,17 @@ interface SelPopup {
 export function TranscriptPanel({
   segments,
   partials,
+  answersReady,
+  answersHint,
   onAsk,
   onTranslate,
   onClear,
 }: {
   segments: TranscriptSegment[];
   partials?: { them?: string; me?: string };
+  /** false = no LLM configured; transcription keeps working, ⚡答 does not */
+  answersReady: boolean;
+  answersHint: string;
   onAsk: (text: string) => void;
   onTranslate: (seg: TranscriptSegment) => void;
   onClear: () => void;
@@ -117,7 +122,8 @@ export function TranscriptPanel({
                   {!me && (
                     <button
                       className="bubble-ask"
-                      title={t.transcript.answerTitle}
+                      disabled={!answersReady}
+                      title={answersReady ? t.transcript.answerTitle : answersHint}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAsk(s.text);
@@ -161,7 +167,12 @@ export function TranscriptPanel({
           style={{ left: sel.x, top: sel.y }}
           onMouseDown={(e) => e.preventDefault()}
         >
-          <button className="btn btn-sm btn-primary" onClick={answerSel}>
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={!answersReady}
+            title={answersReady ? undefined : answersHint}
+            onClick={answerSel}
+          >
             {t.transcript.answerSelection}
           </button>
         </div>

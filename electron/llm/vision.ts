@@ -80,6 +80,6 @@ export async function visionChat(
     throw new Error(`Vision HTTP ${raw.status}: ${raw.body.slice(0, 300)}`);
   }
   const text = extractVisionText(raw.body);
-  if (!text) throw new Error(`视觉模型返回空结果：${raw.body.slice(0, 200)}`);
+  if (!text) throw new Error(`the vision model returned an empty result: ${raw.body.slice(0, 200)}`);
   return text;
 }

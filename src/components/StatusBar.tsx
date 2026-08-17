@@ -1,14 +1,23 @@
 import type { AsrUiState, HudStats } from '../App';
+import { chipTone, type ChipTone, type ServiceHealthReport } from '../../shared/healthState';
 import { useT } from '../i18n';
+
+/** one glyph per tone — the chips must stay readable at 10px in a 28px bar */
+const MARK: Record<ChipTone, string> = { ok: '✓', busy: '…', bad: '!', none: '–' };
 
 export function StatusBar({
   asr,
   capturing,
   hud,
+  health,
+  onOpenHealth,
 }: {
   asr: AsrUiState;
   capturing: boolean;
   hud?: HudStats;
+  /** absent until the settings snapshot has loaded */
+  health?: ServiceHealthReport;
+  onOpenHealth: () => void;
 }) {
   const t = useT();
   return (
@@ -30,6 +39,20 @@ export function StatusBar({
           <span className="tag tag-err" title={asr.lastError}>
             ⚠
           </span>
+        )}
+        {/* compact service health; the panel behind it carries the detail */}
+        {health && (
+          <button className="health-chips" onClick={onOpenHealth} title={t.health.chipsTitle}>
+            <span className={`health-chip is-${chipTone(health.asr)}`}>
+              {t.health.chipAsr} {MARK[chipTone(health.asr)]}
+            </span>
+            <span className={`health-chip is-${chipTone(health.llm)}`}>
+              {t.health.chipLlm} {MARK[chipTone(health.llm)]}
+            </span>
+            <span className={`health-chip is-${chipTone(health.audio)}`}>
+              {t.health.chipAudio} {MARK[chipTone(health.audio)]}
+            </span>
+          </button>
         )}
       </div>
       {hud && (

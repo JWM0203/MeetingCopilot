@@ -16,10 +16,14 @@ import {
 } from '../shared/transcript';
 import { isLikelyQuestion } from '../shared/textHeuristics';
 import { captureKindForPlatform } from '../shared/platform';
+import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
 import { TranscriptPanel } from './components/TranscriptPanel';
 import { SettingsPanel } from './components/SettingsPanel';
+import { ServiceHealthPanel } from './components/ServiceHealthPanel';
+import { DiagnosticsPanel } from './components/DiagnosticsPanel';
+import { HelpPanel } from './components/HelpPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
@@ -71,6 +75,9 @@ export function App() {
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [hud, setHud] = useState<HudStats>({ count: 0 });
   const [continuous, setContinuous] = useState(false);
@@ -352,6 +359,10 @@ export function App() {
     const offShot = window.mc.onShotHotkey(() => void doRegionShot());
 
     window.__mcAutoStart = () => void startCapture();
+    // visual-QA hooks (MC_MAIN_SHOT in electron/main.ts): open a panel from the
+    // main process so it can be screenshotted
+    window.__mcOpenSettings = () => setShowSettings(true);
+    window.__mcOpenHelp = () => setShowHelp(true);
     return () => {
       off();
       offLlm();
@@ -589,6 +600,47 @@ export function App() {
     [patchSession],
   );
 
+  /** the overlays are mutually exclusive: one panel at a time, never stacked */
+  const closePanels = useCallback(() => {
+    setShowSettings(false);
+    setShowHealth(false);
+    setShowDiagnostics(false);
+    setShowHelp(false);
+  }, []);
+
+  /**
+   * Tray menu -> renderer (Phase 4 §A). Main only forwards what it cannot do
+   * itself, and it has already made the window visible. 开始/停止转写
+   * deliberately runs the SAME code path as the title-bar button, readiness
+   * gate included, so the two can never disagree. Re-subscribed whenever that
+   * state changes — cheaper and less error-prone than a fistful of refs.
+   */
+  useEffect(() => {
+    return window.mc.onTrayCommand(({ command }) => {
+      switch (command) {
+        case 'toggle-capture':
+          if (capturing) void stopCapture();
+          else if (asr.phase === 'ready') void startCapture();
+          return;
+        case 'new-session':
+          createSession();
+          return;
+        case 'open-settings':
+          closePanels();
+          setShowSettings(true);
+          return;
+        case 'open-health':
+          closePanels();
+          setShowHealth(true);
+          return;
+        case 'open-help':
+          closePanels();
+          setShowHelp(true);
+          return;
+      }
+    });
+  }, [capturing, asr.phase, startCapture, stopCapture, createSession, closePanels]);
+
   const pickKb = useCallback(
     async (slot: KbSlot) => {
       const r = await window.mc.pickKnowledge(slot);
@@ -631,11 +683,37 @@ export function App() {
     [patchSession, currentMaterial],
   );
 
+  /** the v1 -> v2 migration marks hand-configured profiles; show the notice
+   * once until the user dismisses it (persisted in onboarding state) */
+  const showUpgradeNotice =
+    !!settings &&
+    settings.version === 2 &&
+    settings.onboarding.completed &&
+    !!settings.onboarding.migratedFromV1 &&
+    !settings.onboarding.dismissedUpgradePrompt;
+
+  const dismissUpgradeNotice = async () => {
+    const onboarding = await window.mc.saveOnboardingProgress({ dismissedUpgradePrompt: true });
+    setSettings((s) => (s ? { ...s, onboarding } : s));
+  };
+
   const visionReady =
     !!settings?.llm.answerWithVision &&
     !!settings?.vision.baseUrl &&
     !!settings?.vision.model &&
     !!settings?.vision.apiKeySet;
+
+  /**
+   * One derivation for the status chips, the health panel and the answer
+   * gating (shared/healthState.ts). A missing LLM key disables the answer
+   * buttons with an explanation instead of letting every click produce the
+   * same main-process error turn — but it never blocks transcription.
+   */
+  const health = useMemo(
+    () => (settings ? deriveServiceHealth({ settings, asr, capturing }) : null),
+    [settings, asr, capturing],
+  );
+  const answersReady = health?.answersAvailable ?? true;
 
   return (
     <I18nProvider lang={settings?.ui.lang}>
@@ -739,6 +817,54 @@ export function App() {
         </div>
       </header>
 
+      {/* grandfathered users (settings.json predates the wizard) get one
+          dismissible pointer at the new wizard; wizard-created profiles never
+          carry onboarding.migratedFromV1, so they never see it */}
+      {showUpgradeNotice && (
+        <div className="upgrade-banner">
+          <span>{t.app.upgradeNotice}</span>
+          <button className="btn btn-sm btn-primary" onClick={() => void window.mc.rerunOnboarding()}>
+            {t.app.upgradeCheck}
+          </button>
+          <button className="btn btn-sm" onClick={() => void dismissUpgradeNotice()}>
+            {t.app.upgradeSkip}
+          </button>
+        </div>
+      )}
+
+      {showHealth && settings && health && (
+        <ServiceHealthPanel
+          settings={settings}
+          health={health}
+          onClose={() => setShowHealth(false)}
+          onOpenSettings={() => {
+            setShowHealth(false);
+            setShowSettings(true);
+          }}
+          onOpenDiagnostics={() => {
+            setShowHealth(false);
+            setShowDiagnostics(true);
+          }}
+          onSettingsRefreshed={setSettings}
+        />
+      )}
+
+      {showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
+
+      {showHelp && (
+        <HelpPanel
+          onClose={() => setShowHelp(false)}
+          onOpenSettings={() => {
+            setShowHelp(false);
+            setShowSettings(true);
+          }}
+          onOpenDiagnostics={() => {
+            setShowHelp(false);
+            setShowDiagnostics(true);
+          }}
+        />
+      )}
+
       {showSettings && settings && (
         <SettingsPanel
           settings={settings}
@@ -748,6 +874,18 @@ export function App() {
             setShowSettings(false);
           }}
           onClose={() => setShowSettings(false)}
+          onRerunWizard={() => {
+            setShowSettings(false);
+            void window.mc.rerunOnboarding();
+          }}
+          onOpenDiagnostics={() => {
+            setShowSettings(false);
+            setShowDiagnostics(true);
+          }}
+          onOpenHelp={() => {
+            setShowSettings(false);
+            setShowHelp(true);
+          }}
         />
       )}
 
@@ -755,6 +893,8 @@ export function App() {
         <TranscriptPanel
           segments={segments}
           partials={partials}
+          answersReady={answersReady}
+          answersHint={t.health.answersDisabled}
           onAsk={(text) => askLlm('segment', text)}
           onTranslate={translateSegment}
           onClear={clearTranscript}
@@ -769,6 +909,8 @@ export function App() {
           jdChars={current?.jdText?.length ?? 0}
           notice={kbNotice}
           visionReady={visionReady}
+          answersReady={answersReady}
+          answersHint={t.health.answersDisabled}
           onSwitch={setCurrentId}
           onNew={createSession}
           onDelete={deleteSession}
@@ -782,7 +924,13 @@ export function App() {
         />
       </div>
 
-      <StatusBar asr={asr} capturing={capturing} hud={showHud ? hud : undefined} />
+      <StatusBar
+        asr={asr}
+        capturing={capturing}
+        hud={showHud ? hud : undefined}
+        health={health ?? undefined}
+        onOpenHealth={() => setShowHealth((v) => !v)}
+      />
     </div>
     </I18nProvider>
   );

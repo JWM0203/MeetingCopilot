@@ -56,6 +56,13 @@ export interface StreamingSentence {
 }
 
 export interface StreamingSessionCallbacks {
+  /**
+   * The service accepted the task and the session is live (DashScope
+   * `task-started`). Optional: the ASR worker does not care, but the
+   * connection test does — "the socket opened" is not proof that the key,
+   * the model and the workspace are all good, "the task started" is.
+   */
+  onReady?(): void;
   /** transient partial for the sentence currently being spoken */
   onPartial(text: string): void;
   /** a sentence the service finalized (its own endpointing, not our VAD) */

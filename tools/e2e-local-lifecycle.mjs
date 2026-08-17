@@ -9,7 +9,13 @@ const electron = require('electron');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const child = spawn(electron, [root], {
   cwd: root,
-  env: { ...process.env, MC_E2E_QUIT_ON_ASR_READY: '1' },
+  env: {
+    ...process.env,
+    MC_E2E_QUIT_ON_ASR_READY: '1',
+    // this check exercises the main-window path; without it a profile that has
+    // never run the first-run wizard would boot into the setup window instead
+    MC_DEV_DEFAULT_LOCAL_ASR: '1',
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -30,7 +36,7 @@ const timeout = setTimeout(() => {
 
 child.on('exit', (code) => {
   clearTimeout(timeout);
-  const sidecarReady = output.includes('[sidecar] local funasr ready');
+  const sidecarReady = output.includes('[sidecar] local ASR ready');
   const workerReady = output.includes('[asr] ready ep=cloud-rt');
   const fatal = output.includes('[asr] error (fatal=true)');
   if (code === 0 && sidecarReady && workerReady && !fatal) {

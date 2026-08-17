@@ -1,19 +1,31 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC,
+  type AppInfo,
   type AsrEvent,
   type KbSlot,
   type LlmAskPayload,
   type LlmEvent,
+  type OnboardingProgressPatch,
+  type OnboardingState,
+  type ProviderTestRequest,
+  type ProviderTestResult,
   type PublicSettings,
   type SessionsFile,
   type SettingsPatch,
+  type TrayCommandPayload,
 } from '../shared/protocol';
 
 export interface McApi {
   readonly platform: NodeJS.Platform;
   getSettings(): Promise<PublicSettings>;
   setSettings(patch: SettingsPatch): Promise<PublicSettings>;
+  /** first-run wizard state (the main window only reads it / dismisses the
+   * upgrade notice — completing onboarding belongs to the setup window) */
+  getOnboarding(): Promise<OnboardingState>;
+  saveOnboardingProgress(patch: OnboardingProgressPatch): Promise<OnboardingState>;
+  /** reopen the setup wizard without closing the app (settings / upgrade notice) */
+  rerunOnboarding(): Promise<boolean>;
   importKnowledge(): Promise<{ chars: number }>;
   clearKnowledge(): Promise<{ chars: number }>;
   /** pick a resume/JD document for the current session (.md/.txt/.docx/.pdf) */
@@ -51,6 +63,24 @@ export interface McApi {
   memoUpdate(p: { memo: string; question: string; answer: string }): Promise<string>;
   onLlmEvent(cb: (ev: LlmEvent) => void): () => void;
   onShotHotkey(cb: () => void): () => void;
+  /** tray menu entries only the renderer can service (capture / session /
+   * panels). Main has already made the window visible when this fires. */
+  onTrayCommand(cb: (payload: TrayCommandPayload) => void): () => void;
+  /** open an allowlisted https documentation link in the OS browser;
+   * false = refused by the main-process allowlist */
+  openExternal(url: string): Promise<boolean>;
+  /** read the clipboard — call ONLY from an explicit paste-button click */
+  readClipboardText(): Promise<string>;
+  getAppInfo(): Promise<AppInfo>;
+  /** run ONE real provider connection test; explicit user action only (it
+   * costs the user a minimal billable request). Main maps every failure to a
+   * ProviderTestCode + zh/en message, so nothing raw reaches the UI. */
+  providerTest(req: ProviderTestRequest): Promise<ProviderTestResult>;
+  /** plaintext support report, built locally on request. Contains no keys, no
+   * transcripts and no knowledge-base text — safe to paste into an issue. */
+  getDiagnostics(): Promise<string>;
+  /** reveal %APPDATA%/MeetingCopilot (settings, sessions, knowledge) */
+  openLogsFolder(): Promise<boolean>;
   hide(): void;
   quit(): void;
 }
@@ -59,6 +89,9 @@ const api: McApi = {
   platform: process.platform,
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
+  getOnboarding: () => ipcRenderer.invoke(IPC.onboardingGet),
+  saveOnboardingProgress: (patch) => ipcRenderer.invoke(IPC.onboardingSaveProgress, patch),
+  rerunOnboarding: () => ipcRenderer.invoke(IPC.onboardingRerun),
   importKnowledge: () => ipcRenderer.invoke(IPC.knowledgeImport),
   clearKnowledge: () => ipcRenderer.invoke(IPC.knowledgeClear),
   pickKnowledge: (slot) => ipcRenderer.invoke(IPC.knowledgePick, slot),
@@ -94,6 +127,17 @@ const api: McApi = {
     ipcRenderer.on(IPC.shotHotkey, listener);
     return () => ipcRenderer.removeListener(IPC.shotHotkey, listener);
   },
+  onTrayCommand: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: TrayCommandPayload) => cb(payload);
+    ipcRenderer.on(IPC.trayCommand, listener);
+    return () => ipcRenderer.removeListener(IPC.trayCommand, listener);
+  },
+  openExternal: (url) => ipcRenderer.invoke(IPC.externalOpen, url),
+  readClipboardText: () => ipcRenderer.invoke(IPC.clipboardReadText),
+  getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
+  providerTest: (req) => ipcRenderer.invoke(IPC.providerTest, req),
+  getDiagnostics: () => ipcRenderer.invoke(IPC.diagnosticsGet),
+  openLogsFolder: () => ipcRenderer.invoke(IPC.logsOpenFolder),
   hide: () => ipcRenderer.send(IPC.winHide),
   quit: () => ipcRenderer.send(IPC.appQuit),
 };

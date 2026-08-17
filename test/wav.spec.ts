@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { encodeWav } from '../electron/asr/wav';
+import { decodeWav, decodeWav16kMono } from '../electron/asr/wavRead';
 
 function readHeader(buf: Uint8Array) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -46,4 +49,61 @@ describe('encodeWav', () => {
     expect(dv.getInt16(52, true)).toBe(32767); // +2 clamped
     expect(dv.getInt16(54, true)).toBe(-32768); // -2 clamped
   });
+});
+
+describe('decodeWav', () => {
+  it('round-trips encodeWav output', () => {
+    const pcm = new Float32Array([0, 0.5, -0.5, 0.25]);
+    const { pcm: back, sampleRate, channels } = decodeWav(encodeWav(pcm, 16000));
+    expect(sampleRate).toBe(16000);
+    expect(channels).toBe(1);
+    expect(back.length).toBe(pcm.length);
+    for (let i = 0; i < pcm.length; i++) expect(back[i]).toBeCloseTo(pcm[i], 3);
+  });
+
+  it('walks the chunk list instead of assuming a 44-byte header', () => {
+    // SAPI (which generated the bundled fixtures) writes a `fact` chunk
+    // between `fmt ` and `data`
+    const body = encodeWav(new Float32Array([0.5, -0.5]), 16000);
+    const fact = Buffer.alloc(12);
+    fact.write('fact', 0, 'ascii');
+    fact.writeUInt32LE(4, 4);
+    fact.writeUInt32LE(2, 8);
+    const withFact = Buffer.concat([
+      Buffer.from(body.subarray(0, 36)),
+      fact,
+      Buffer.from(body.subarray(36)),
+    ]);
+    withFact.writeUInt32LE(withFact.length - 8, 4); // fix the RIFF size
+    const { pcm } = decodeWav(withFact);
+    expect(pcm.length).toBe(2);
+    expect(pcm[0]).toBeCloseTo(0.5, 3);
+  });
+
+  it('rejects anything that is not a 16-bit RIFF/WAVE file', () => {
+    expect(() => decodeWav(Buffer.alloc(64))).toThrow(/RIFF/);
+  });
+
+  it('refuses to guess when the format is not 16 kHz mono', () => {
+    expect(() => decodeWav16kMono(encodeWav(new Float32Array(8), 44100))).toThrow(/16 kHz mono/);
+  });
+});
+
+describe('bundled connection-test clips', () => {
+  const clip = (name: string) =>
+    readFileSync(join(__dirname, '..', 'resources', 'test-audio', name));
+
+  for (const name of ['asr-test-zh.wav', 'asr-test-en.wav']) {
+    it(`${name} ships as a short 16 kHz mono clip`, () => {
+      const bytes = clip(name);
+      // small enough to bundle, long enough for an ASR service to answer
+      expect(bytes.length).toBeLessThanOrEqual(64 * 1024);
+      const pcm = decodeWav16kMono(bytes);
+      const seconds = pcm.length / 16000;
+      expect(seconds).toBeGreaterThan(0.4);
+      expect(seconds).toBeLessThan(3);
+      // it must actually contain speech, not silence
+      expect(Math.max(...pcm)).toBeGreaterThan(0.05);
+    });
+  }
 });

@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { SettingsStore, defaultSettings, type SecretCipher } from '../electron/settings';
+import {
+  SettingsStore,
+  apiKeyHint,
+  defaultSettings,
+  migrateSettingsV1ToV2,
+  plainCipher,
+  type SecretCipher,
+} from '../electron/settings';
+import type { SettingsFile } from '../shared/protocol';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
+  secure: true,
   encrypt: (plain) => `enc:${Buffer.from(plain, 'utf8').toString('base64')}`,
   decrypt: (s) => (s.startsWith('enc:') ? Buffer.from(s.slice(4), 'base64').toString('utf8') : ''),
 };
@@ -29,6 +38,12 @@ describe('SettingsStore', () => {
     expect(s.data.llm.model).toBe('deepseek-chat');
     expect(s.data.llm.answerLang).toBe('chinese');
     expect(s.data.ui.stealth).toBe(true);
+    // v2: a brand new profile has never seen the wizard
+    expect(s.data.version).toBe(2);
+    expect(s.data.onboarding).toEqual({ schemaVersion: 1, completed: false });
+    expect(s.migratedFromV1).toBe(false);
+    // nothing was written; the wizard decides what the first file looks like
+    expect(existsSync(file)).toBe(false);
   });
 
   it('boots with defaults on corrupt file (never crash boot)', () => {
@@ -188,5 +203,430 @@ describe('SettingsStore', () => {
     const s2 = new SettingsStore(file, fakeCipher);
     expect(s2.data.audio.themDeviceId).toBe('blackhole-2ch');
     expect(s2.getPublic().audio.themDeviceId).toBe('blackhole-2ch');
+  });
+});
+
+// ---------------------------------------------------------------- v2 schema
+
+/** a realistic pre-v2 file: real ciphertexts, cloud realtime ASR, custom vision */
+const V1_FILE = {
+  version: 1,
+  llm: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+    answerLang: 'chinese',
+    answerWithVision: false,
+    apiKeyEnc: 'enc:c2stZGVlcHNlZWs=',
+  },
+  vision: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    model: 'gemini-2.5-flash',
+    proxyUrl: '127.0.0.1:7897',
+    apiKeyEnc: 'enc:c2stZ2VtaW5p',
+  },
+  asr: {
+    language: 'auto',
+    backend: 'cloud-realtime',
+    cloud: {},
+    realtime: {
+      baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+      model: 'fun-asr-realtime',
+      apiKeyEnc: 'enc:c2stYWxpeXVu',
+    },
+    localRealtime: { model: 'fun-asr-nano' },
+  },
+  ui: {
+    stealth: false,
+    hotkeyToggle: 'Alt+Q',
+    hotkeyShot: 'Alt+W',
+    opacity: 0.8,
+    fontScale: 'large',
+    theme: 'light',
+    lang: 'en',
+  },
+  audio: { micEnabled: true, micDeviceId: 'mic-1', themDeviceId: 'them-1' },
+};
+
+describe('migrateSettingsV1ToV2 (pure)', () => {
+  it('preserves every configured field, ciphertexts byte-for-byte', () => {
+    const v2 = migrateSettingsV1ToV2(V1_FILE);
+    expect(v2.version).toBe(2);
+    expect(v2.llm.apiKeyEnc).toBe(V1_FILE.llm.apiKeyEnc);
+    expect(v2.vision.apiKeyEnc).toBe(V1_FILE.vision.apiKeyEnc);
+    expect(v2.asr.realtime?.apiKeyEnc).toBe(V1_FILE.asr.realtime.apiKeyEnc);
+    expect(v2.llm.baseUrl).toBe(V1_FILE.llm.baseUrl);
+    expect(v2.vision.proxyUrl).toBe('127.0.0.1:7897');
+    expect(v2.asr.backend).toBe('cloud-realtime');
+    expect(v2.asr.realtime?.baseUrl).toBe(V1_FILE.asr.realtime.baseUrl);
+    // Phase 4 added two ui fields. Everything the user had configured survives
+    // untouched; the new ones arrive with their OFF defaults, so upgrading can
+    // never silently register an existing profile for auto-start.
+    expect(v2.ui).toEqual({ ...V1_FILE.ui, autoLaunch: false, trayNoticeShown: false });
+    expect(v2.audio).toEqual(V1_FILE.audio);
+  });
+
+  it('grandfathers existing users past the wizard', () => {
+    const v2 = migrateSettingsV1ToV2(V1_FILE);
+    expect(v2.onboarding.completed).toBe(true);
+    expect(v2.onboarding.schemaVersion).toBe(1);
+    // never claims a plan the user did not pick
+    expect(v2.onboarding.selectedPlan).toBeUndefined();
+  });
+
+  it('marks the profile as migrated so the upgrade notice can target it', () => {
+    expect(migrateSettingsV1ToV2(V1_FILE).onboarding.migratedFromV1).toBe(true);
+    // a brand new profile is NOT a migrated one — it must never see the notice
+    expect(defaultSettings().onboarding.migratedFromV1).toBeUndefined();
+    expect(migrateSettingsV1ToV2(V1_FILE).onboarding.dismissedUpgradePrompt).toBeUndefined();
+  });
+
+  it('infers providerId from the catalog by exact baseUrl+model', () => {
+    const v2 = migrateSettingsV1ToV2(V1_FILE);
+    expect(v2.llm.providerId).toBe('deepseek');
+    expect(v2.vision.providerId).toBe('gemini');
+    expect(v2.asr.providerId).toBe('aliyun-dashscope-cn');
+  });
+
+  it('falls back to custom for unknown endpoints', () => {
+    const v2 = migrateSettingsV1ToV2({
+      ...V1_FILE,
+      llm: { ...V1_FILE.llm, baseUrl: 'https://relay.example.com/v1', model: 'gpt-whatever' },
+      vision: { baseUrl: 'https://relay.example.com/v1', model: 'vl-whatever' },
+      asr: {
+        ...V1_FILE.asr,
+        realtime: { baseUrl: 'wss://relay.example.com/ws', model: 'rt-whatever' },
+      },
+    });
+    expect(v2.llm.providerId).toBe('custom');
+    expect(v2.vision.providerId).toBe('custom');
+    expect(v2.asr.providerId).toBe('custom');
+  });
+
+  it('leaves asr.providerId absent for local backends and unset vision', () => {
+    const v2 = migrateSettingsV1ToV2({
+      version: 1,
+      asr: { language: 'auto', backend: 'local-realtime', localRealtime: { model: 'fun-asr-nano' } },
+    });
+    expect(v2.asr.providerId).toBeUndefined();
+    expect(v2.vision.providerId).toBeUndefined();
+  });
+
+  it('does not invent an apiKeyHint it cannot compute', () => {
+    const v2 = migrateSettingsV1ToV2(V1_FILE);
+    expect(v2.llm.apiKeyHint).toBeUndefined();
+    expect(v2.asr.realtime?.apiKeyHint).toBeUndefined();
+  });
+
+  it('fills missing sections from the defaults', () => {
+    const v2 = migrateSettingsV1ToV2({ version: 1, llm: { model: 'custom-model' } });
+    expect(v2.llm.model).toBe('custom-model');
+    expect(v2.llm.baseUrl).toBe('https://api.deepseek.com/v1');
+    expect(v2.asr.language).toBe('auto');
+    expect(v2.audio.micEnabled).toBe(false);
+  });
+
+  it('throws on input that is not a JSON object', () => {
+    expect(() => migrateSettingsV1ToV2(null)).toThrow();
+    expect(() => migrateSettingsV1ToV2('nope')).toThrow();
+    expect(() => migrateSettingsV1ToV2([1, 2, 3])).toThrow();
+  });
+});
+
+describe('SettingsStore v1 -> v2 load path', () => {
+  it('migrates on load, backs the original up to settings.json.bak and rewrites v2', () => {
+    const original = JSON.stringify(V1_FILE, null, 2);
+    writeFileSync(file, original, 'utf8');
+
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.migratedFromV1).toBe(true);
+    expect(s.data.version).toBe(2);
+    expect(s.data.onboarding.completed).toBe(true);
+
+    // the v1 original is recoverable, byte-for-byte
+    expect(readFileSync(`${file}.bak`, 'utf8')).toBe(original);
+
+    // the live file is v2 and still carries the ciphertexts
+    const onDisk = JSON.parse(readFileSync(file, 'utf8')) as SettingsFile;
+    expect(onDisk.version).toBe(2);
+    expect(onDisk.llm.apiKeyEnc).toBe(V1_FILE.llm.apiKeyEnc);
+    expect(onDisk.asr.realtime?.apiKeyEnc).toBe(V1_FILE.asr.realtime.apiKeyEnc);
+    expect(s.getLlmApiKey()).toBe('sk-deepseek');
+    expect(s.getRealtimeAsrApiKey()).toBe('sk-aliyun');
+
+    // reloading the migrated file is a no-op
+    const s2 = new SettingsStore(file, fakeCipher);
+    expect(s2.migratedFromV1).toBe(false);
+    expect(s2.data).toEqual(s.data);
+  });
+
+  it('treats a file without a version field as v1', () => {
+    writeFileSync(file, JSON.stringify({ llm: { model: 'legacy' } }), 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.migratedFromV1).toBe(true);
+    expect(s.data.llm.model).toBe('legacy');
+    expect(s.data.onboarding.completed).toBe(true);
+  });
+
+  it('never overwrites an existing .bak', () => {
+    writeFileSync(file, JSON.stringify(V1_FILE), 'utf8');
+    writeFileSync(`${file}.bak`, 'an older original', 'utf8');
+    new SettingsStore(file, fakeCipher);
+    expect(readFileSync(`${file}.bak`, 'utf8')).toBe('an older original');
+  });
+
+  it('keeps a corrupt file untouched and boots with defaults', () => {
+    const corrupt = '{"llm": {broken json';
+    writeFileSync(file, corrupt, 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data).toEqual(defaultSettings());
+    expect(s.migratedFromV1).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe(corrupt);
+    expect(existsSync(`${file}.bak`)).toBe(false);
+  });
+
+  it('keeps the original untouched when migration throws (valid JSON, wrong shape)', () => {
+    const weird = '"not an object"';
+    writeFileSync(file, weird, 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data).toEqual(defaultSettings());
+    expect(s.data.onboarding.completed).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe(weird);
+    expect(existsSync(`${file}.bak`)).toBe(false);
+  });
+
+  it('loads a v2 file without migrating or backing it up', () => {
+    const v2: SettingsFile = {
+      ...defaultSettings(),
+      onboarding: { schemaVersion: 1, completed: false, lastStep: 3, selectedPlan: 'recommended' },
+    };
+    writeFileSync(file, JSON.stringify(v2), 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.migratedFromV1).toBe(false);
+    expect(existsSync(`${file}.bak`)).toBe(false);
+    expect(s.data.onboarding).toEqual({
+      schemaVersion: 1,
+      completed: false,
+      lastStep: 3,
+      selectedPlan: 'recommended',
+    });
+  });
+});
+
+describe('weak-crypto reporting', () => {
+  it('reports secure storage when the OS cipher is in use', () => {
+    expect(new SettingsStore(file, fakeCipher).getPublic().weakCrypto).toBe(false);
+  });
+
+  it('flags the plainCipher fallback so the UI can warn before saving a key', () => {
+    const s = new SettingsStore(file, plainCipher);
+    expect(s.getPublic().weakCrypto).toBe(true);
+    // the flag survives a save round-trip: settings:set returns getPublic()
+    s.applyPatch({ llm: { apiKey: 'sk-weak-1234' } });
+    const pub = s.getPublic();
+    expect(pub.weakCrypto).toBe(true);
+    expect(pub.llm.apiKeySet).toBe(true);
+    expect(JSON.stringify(pub)).not.toContain('sk-weak-1234');
+  });
+
+  it('is a runtime flag, never persisted to disk', () => {
+    const s = new SettingsStore(file, plainCipher);
+    s.applyPatch({ llm: { apiKey: 'sk-weak-1234' } });
+    expect(readFileSync(file, 'utf8')).not.toContain('weakCrypto');
+  });
+});
+
+describe('SettingsStore onboarding + key hints', () => {
+  it('persists wizard progress without ever completing onboarding', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    const state = s.saveOnboardingProgress({ lastStep: 2, selectedPlan: 'mimo-simple' });
+    expect(state).toEqual({
+      schemaVersion: 1,
+      completed: false,
+      lastStep: 2,
+      selectedPlan: 'mimo-simple',
+    });
+    const s2 = new SettingsStore(file, fakeCipher);
+    expect(s2.data.onboarding.lastStep).toBe(2);
+    expect(s2.data.onboarding.completed).toBe(false);
+  });
+
+  it('completes onboarding with a timestamp and the chosen plan', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    const state = s.completeOnboarding({ selectedPlan: 'recommended' });
+    expect(state.completed).toBe(true);
+    expect(state.selectedPlan).toBe('recommended');
+    expect(Date.parse(state.completedAt!)).not.toBeNaN();
+
+    const s2 = new SettingsStore(file, fakeCipher);
+    expect(s2.data.onboarding.completed).toBe(true);
+    expect(s2.getPublic().onboarding.completed).toBe(true);
+  });
+
+  it('lets the main window dismiss the upgrade notice', () => {
+    writeFileSync(file, JSON.stringify(V1_FILE), 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.getOnboarding().dismissedUpgradePrompt).toBeUndefined();
+    s.saveOnboardingProgress({ dismissedUpgradePrompt: true });
+    expect(new SettingsStore(file, fakeCipher).data.onboarding.dismissedUpgradePrompt).toBe(true);
+  });
+
+  it('computes the key hint main-side and never exposes more than 4 characters', () => {
+    expect(apiKeyHint('sk-abcdefgh')).toBe('efgh');
+    expect(apiKeyHint('ab')).toBe('ab');
+    expect(apiKeyHint('')).toBeUndefined();
+
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({ llm: { apiKey: 'sk-topsecret-9911' } });
+    expect(s.data.llm.apiKeyHint).toBe('9911');
+    const pub = s.getPublic();
+    expect(pub.llm.apiKeyHint).toBe('9911');
+    expect(JSON.stringify(pub)).not.toContain('sk-topsecret-9911');
+  });
+
+  it('clears the hint and verification when a key is deleted', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      asr: {
+        realtime: {
+          baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+          model: 'fun-asr-realtime',
+          apiKey: 'sk-aliyun-4321',
+          verification: { lastTestOk: true, lastTestCode: 'OK' },
+        },
+      },
+    });
+    expect(s.data.asr.realtime?.apiKeyHint).toBe('4321');
+    expect(s.getPublic().asr.realtime.verification?.lastTestCode).toBe('OK');
+
+    s.applyPatch({ asr: { realtime: { apiKey: '' } } });
+    expect(s.data.asr.realtime?.apiKeyHint).toBeUndefined();
+    expect(s.data.asr.realtime?.apiKeyEnc).toBeUndefined();
+    // a key change invalidates the previous test result
+    expect(s.data.asr.realtime?.verification).toBeUndefined();
+  });
+
+  it('MC_DEV_DEFAULT_LOCAL_ASR=1 keeps the pre-wizard developer boot', () => {
+    const before = process.env.MC_DEV_DEFAULT_LOCAL_ASR;
+    try {
+      process.env.MC_DEV_DEFAULT_LOCAL_ASR = '1';
+      const s = new SettingsStore(file, fakeCipher);
+      // straight to the main window, with the local sidecar backend as before
+      expect(s.data.onboarding.completed).toBe(true);
+      expect(s.data.asr.backend).toBe('local-realtime');
+    } finally {
+      if (before === undefined) delete process.env.MC_DEV_DEFAULT_LOCAL_ASR;
+      else process.env.MC_DEV_DEFAULT_LOCAL_ASR = before;
+    }
+    expect(new SettingsStore(file, fakeCipher).data.onboarding.completed).toBe(false);
+  });
+
+  it('round-trips providerId and verification through the public settings', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      llm: {
+        providerId: 'deepseek',
+        verification: { lastTestOk: true, lastTestCode: 'OK', latencyMs: 120 },
+      },
+      asr: { providerId: 'aliyun-dashscope-cn' },
+    });
+    const pub = s.getPublic();
+    expect(pub.version).toBe(2);
+    expect(pub.llm.providerId).toBe('deepseek');
+    expect(pub.llm.verification).toEqual({ lastTestOk: true, lastTestCode: 'OK', latencyMs: 120 });
+    expect(pub.asr.providerId).toBe('aliyun-dashscope-cn');
+  });
+});
+
+describe('SettingsStore.recordVerification', () => {
+  const verdict = {
+    lastTestAt: '2026-08-17T10:00:00.000Z',
+    lastTestOk: true,
+    lastTestCode: 'OK' as const,
+    latencyMs: 412,
+  };
+
+  it('writes the verdict into each slot and persists it', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.recordVerification('llm', verdict);
+    s.recordVerification('vision', { ...verdict, lastTestOk: false, lastTestCode: 'TIMEOUT' });
+    s.recordVerification('asr-cloud', { ...verdict, latencyMs: 900 });
+    s.recordVerification('asr-realtime', { ...verdict, latencyMs: 88 });
+
+    const reloaded = new SettingsStore(file, fakeCipher);
+    expect(reloaded.data.llm.verification).toEqual(verdict);
+    expect(reloaded.data.vision.verification?.lastTestCode).toBe('TIMEOUT');
+    expect(reloaded.data.asr.cloud?.verification?.latencyMs).toBe(900);
+    expect(reloaded.data.asr.realtime?.verification?.latencyMs).toBe(88);
+    expect(reloaded.getPublic().asr.realtime.verification?.lastTestOk).toBe(true);
+  });
+
+  // this is the whole reason the method exists: settings:set restarts the ASR
+  // engine whenever asr.cloud / asr.realtime appear in a patch, so a test
+  // result must never travel through applyPatch()
+  it('touches nothing but the one verification field', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-llm-1111' },
+      asr: {
+        backend: 'cloud-realtime',
+        language: 'chinese',
+        realtime: {
+          baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+          model: 'fun-asr-realtime',
+          apiKey: 'sk-rt-2222',
+        },
+      },
+      ui: { stealth: false },
+    });
+    const before = JSON.parse(JSON.stringify(s.data)) as SettingsFile;
+
+    s.recordVerification('asr-realtime', verdict);
+
+    const after = s.data;
+    expect(after.asr.realtime?.verification).toEqual(verdict);
+    // key, endpoint, model, hint, backend, language and every other section
+    // survive byte-for-byte
+    expect(after.asr.realtime?.apiKeyEnc).toBe(before.asr.realtime?.apiKeyEnc);
+    expect(after.asr.realtime?.apiKeyHint).toBe('2222');
+    expect(after.asr.realtime?.baseUrl).toBe(before.asr.realtime?.baseUrl);
+    expect(after.asr.realtime?.model).toBe(before.asr.realtime?.model);
+    expect(after.asr.backend).toBe('cloud-realtime');
+    expect(after.asr.language).toBe('chinese');
+    expect(after.llm).toEqual(before.llm);
+    expect(after.vision).toEqual(before.vision);
+    expect(after.ui).toEqual(before.ui);
+    expect(after.audio).toEqual(before.audio);
+    expect(after.onboarding).toEqual(before.onboarding);
+    expect(after.asr.cloud).toEqual(before.asr.cloud);
+  });
+
+  it('overwrites an older verdict rather than merging with it', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.recordVerification('llm', verdict);
+    s.recordVerification('llm', {
+      lastTestAt: '2026-08-17T11:00:00.000Z',
+      lastTestOk: false,
+      lastTestCode: 'RATE_LIMITED',
+    });
+    expect(s.data.llm.verification).toEqual({
+      lastTestAt: '2026-08-17T11:00:00.000Z',
+      lastTestOk: false,
+      lastTestCode: 'RATE_LIMITED',
+    });
+    expect(s.data.llm.verification?.latencyMs).toBeUndefined();
+  });
+
+  it('resolves the stored key for each slot', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      llm: { apiKey: 'sk-llm-1111' },
+      vision: { apiKey: 'sk-vis-2222' },
+      asr: { cloud: { apiKey: 'sk-seg-3333' }, realtime: { apiKey: 'sk-rt-4444' } },
+    });
+    expect(s.getApiKeyForSlot('llm')).toBe('sk-llm-1111');
+    expect(s.getApiKeyForSlot('vision')).toBe('sk-vis-2222');
+    expect(s.getApiKeyForSlot('asr-cloud')).toBe('sk-seg-3333');
+    expect(s.getApiKeyForSlot('asr-realtime')).toBe('sk-rt-4444');
+    expect(new SettingsStore(join(dir, 'other.json'), fakeCipher).getApiKeyForSlot('llm')).toBeUndefined();
   });
 });

@@ -4,6 +4,11 @@
  */
 export const PROTOCOL_VERSION = 1;
 
+import type { ProviderCapability, ProviderId } from './providerCatalog';
+export type { ProviderCapability, ProviderId } from './providerCatalog';
+import type { TrayRendererCommand } from './trayMenu';
+export type { TrayCommand, TrayRendererCommand } from './trayMenu';
+
 // ---------- Settings ----------
 
 export type AsrLanguage = 'auto' | 'chinese' | 'english';
@@ -19,8 +24,134 @@ export type UiLang = 'zh' | 'en';
 /** per-session material slots: resume vs job description */
 export type KbSlot = 'resume' | 'jd';
 
+/** outcome of a provider connection test (Phase 3 runs them; the settings
+ * schema stores the last result so the UI can show it after a restart) */
+export type ProviderTestCode =
+  | 'OK'
+  | 'INVALID_KEY'
+  | 'PERMISSION_DENIED'
+  | 'INSUFFICIENT_BALANCE'
+  | 'RATE_LIMITED'
+  | 'MODEL_NOT_FOUND'
+  | 'REGION_MISMATCH'
+  | 'NETWORK_UNREACHABLE'
+  | 'DNS_ERROR'
+  | 'TLS_ERROR'
+  | 'PROXY_ERROR'
+  | 'TIMEOUT'
+  | 'PROVIDER_ERROR'
+  | 'UNKNOWN_ERROR';
+
+/** last connection-test result for one provider slot */
+export interface ProviderVerification {
+  /** ISO-8601 */
+  lastTestAt?: string;
+  lastTestOk?: boolean;
+  lastTestCode?: ProviderTestCode;
+  latencyMs?: number;
+}
+
+/**
+ * Which stored credential/verification slot a test belongs to. Mirrors the
+ * settings layout: `asr.cloud` and `asr.realtime` are separate slots so
+ * switching backends never clobbers the other one's key or test result.
+ */
+export type ProviderSlot = 'llm' | 'vision' | 'asr-cloud' | 'asr-realtime';
+
+/**
+ * renderer -> main: run ONE connection test. Explicit user action only — the
+ * app never tests on startup, and every test costs the user a (minimal) API
+ * call: 1 token, ~1.4 s of audio, or a 64x64 image.
+ */
+export interface ProviderTestRequest {
+  /** catalog preset the user picked, when the choice came from the catalog */
+  presetId?: string;
+  capability: ProviderCapability;
+  providerId: ProviderId;
+  baseUrl: string;
+  model: string;
+  /**
+   * Plaintext key to test BEFORE it is saved. renderer -> main only: it is
+   * never persisted by this call, never logged, and never echoed back.
+   */
+  candidateApiKey?: string;
+  /** test the key already stored in `slot` instead of supplying one */
+  useStoredKey?: boolean;
+  /** where to read the stored key from and where to record the verdict */
+  slot?: ProviderSlot;
+  /** vision only: '127.0.0.1:7897'-style local proxy */
+  proxyUrl?: string;
+  /**
+   * ASR only: which bundled test clip to send and which language hint to pass.
+   * Absent = main fills it in from `asr.language`.
+   */
+  language?: AsrLanguage;
+}
+
+/**
+ * main -> renderer verdict. The messages are built by the unified mapper
+ * (electron/providerErrors.ts), so the renderer never has to interpret a raw
+ * provider error — which is also what keeps keys and Authorization headers out
+ * of the UI.
+ */
+export interface ProviderTestResult {
+  ok: boolean;
+  code: ProviderTestCode;
+  /** round-trip of the test call itself, present on success and on failure */
+  latencyMs?: number;
+  messageZh: string;
+  messageEn: string;
+  /** for the collapsible advanced detail, when the provider volunteered one */
+  providerRequestId?: string;
+  retryable: boolean;
+}
+
+/** the plan the user picked in the first-run wizard */
+export type OnboardingPlan = 'recommended' | 'mimo-simple' | 'transcription-only' | 'advanced';
+
+/** first-run wizard state (settings v2) */
+export interface OnboardingState {
+  /** wizard-state schema, independent of the settings-file version */
+  schemaVersion: 1;
+  /** false = the setup window owns startup; the main window never opens */
+  completed: boolean;
+  /** ISO-8601 timestamp of completion */
+  completedAt?: string;
+  /** 1-based step the user got to (for 保存并稍后继续) */
+  lastStep?: number;
+  selectedPlan?: OnboardingPlan;
+  /** grandfathered users dismissed the "there is a wizard now" notice */
+  dismissedUpgradePrompt?: boolean;
+  /** set once by the v1 -> v2 migration: this profile was configured by hand
+   * before the wizard existed, so the main window offers the upgrade notice.
+   * A fresh profile that completed the wizard never carries it. */
+  migratedFromV1?: boolean;
+}
+
+/** renderer -> main partial onboarding update (never touches `completed`) */
+export interface OnboardingProgressPatch {
+  lastStep?: number;
+  selectedPlan?: OnboardingPlan;
+  dismissedUpgradePrompt?: boolean;
+}
+
+/** wizard -> main: finish onboarding and hand over to the main window */
+export interface OnboardingCompletePayload {
+  selectedPlan?: OnboardingPlan;
+}
+
+/** identity of the running build (shown in the wizard footer / about) */
+export interface AppInfo {
+  version: string;
+  platform: NodeJS.Platform;
+  /** false in `npm run dev`, true inside an installed build */
+  packaged: boolean;
+}
+
 export interface SettingsFile {
-  version: 1;
+  version: 2;
+  /** first-run wizard state; added in v2 (migrated files are grandfathered) */
+  onboarding: OnboardingState;
   llm: {
     baseUrl: string;
     model: string;
@@ -30,6 +161,11 @@ export interface SettingsFile {
     answerWithVision?: boolean;
     /** encrypted-at-rest (safeStorage, base64); never exposed raw to renderer */
     apiKeyEnc?: string;
+    /** catalog provider behind baseUrl+model; 'custom' when unmatched */
+    providerId?: ProviderId;
+    /** last <=4 characters of the saved key, computed main-side at save time */
+    apiKeyHint?: string;
+    verification?: ProviderVerification;
   };
   vision: {
     baseUrl?: string;
@@ -37,12 +173,17 @@ export interface SettingsFile {
     apiKeyEnc?: string;
     /** proxy for blocked providers (e.g. Gemini): '127.0.0.1:7897'; empty = direct */
     proxyUrl?: string;
+    providerId?: ProviderId;
+    apiKeyHint?: string;
+    verification?: ProviderVerification;
   };
   asr: {
     language: AsrLanguage;
     /** override models dir; default %APPDATA%/MeetingCopilot/models */
     modelsDir?: string;
-    /** 'local-realtime' = FunASR streaming via the auto-spawned local sidecar;
+    /** catalog provider behind the ACTIVE cloud slot; absent for local backends */
+    providerId?: ProviderId;
+    /** 'local-realtime' = auto-spawned local sidecar (FunASR or MOSS);
      * 'local' = whisper turbo on-device; 'cloud' = OpenAI-compatible ASR API;
      * 'cloud-realtime' = remote WebSocket streaming (e.g. Aliyun fun-asr-realtime) */
     backend?: 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
@@ -51,6 +192,8 @@ export interface SettingsFile {
       baseUrl?: string;
       model?: string;
       apiKeyEnc?: string;
+      apiKeyHint?: string;
+      verification?: ProviderVerification;
     };
     /** streaming cloud ASR provider (used when backend === 'cloud-realtime');
      * separate slot so switching backends never clobbers the other's config */
@@ -59,9 +202,11 @@ export interface SettingsFile {
       baseUrl?: string;
       model?: string;
       apiKeyEnc?: string;
+      apiKeyHint?: string;
+      verification?: ProviderVerification;
     };
-    /** local streaming sidecar (backend === 'local-realtime'); fixed localhost
-     * endpoint, only the model is chosen ('fun-asr-nano' | 'paraformer-zh-streaming') */
+    /** local sidecar (backend === 'local-realtime'); fixed localhost endpoint,
+     * model is FunASR Nano, paraformer streaming, or experimental MOSS */
     localRealtime?: {
       model?: string;
     };
@@ -77,6 +222,10 @@ export interface SettingsFile {
     theme: ThemeMode;
     /** UI display language; absent = follow OS locale (zh → zh, else en) */
     lang?: UiLang;
+    /** start MeetingCopilot with the OS session; DEFAULT OFF, user opt-in only */
+    autoLaunch?: boolean;
+    /** the "still running in the tray" balloon was shown once; never repeated */
+    trayNoticeShown?: boolean;
   };
   audio: {
     /** input used for the other-party channel on platforms without loopback */
@@ -90,23 +239,57 @@ export interface SettingsFile {
 
 /** What the renderer is allowed to see (no secrets). */
 export interface PublicSettings {
-  version: 1;
+  version: 2;
+  /**
+   * true when the OS credential store is unavailable and API keys can only be
+   * obfuscated (the plainCipher fallback). NOT persisted — it describes the
+   * running machine, and both `settings:get` and `settings:set` report it so
+   * the UI can warn BEFORE a key is sent for saving.
+   */
+  weakCrypto: boolean;
+  /** first-run wizard state — public so the UI can show the upgrade notice */
+  onboarding: OnboardingState;
   llm: {
     baseUrl: string;
     model: string;
     answerLang: AnswerLang;
     answerWithVision: boolean;
     apiKeySet: boolean;
+    providerId?: ProviderId;
+    /** last <=4 characters of the saved key — never the key itself */
+    apiKeyHint?: string;
+    verification?: ProviderVerification;
   };
-  vision: { baseUrl?: string; model?: string; proxyUrl?: string; apiKeySet: boolean };
+  vision: {
+    baseUrl?: string;
+    model?: string;
+    proxyUrl?: string;
+    apiKeySet: boolean;
+    providerId?: ProviderId;
+    apiKeyHint?: string;
+    verification?: ProviderVerification;
+  };
   /** personal knowledge base (resume/notes) loaded from an .md file */
   knowledge: { chars: number };
   asr: {
     language: AsrLanguage;
     modelsDir?: string;
     backend: 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
-    cloud: { baseUrl?: string; model?: string; apiKeySet: boolean };
-    realtime: { baseUrl?: string; model?: string; apiKeySet: boolean };
+    providerId?: ProviderId;
+    cloud: {
+      baseUrl?: string;
+      model?: string;
+      apiKeySet: boolean;
+      apiKeyHint?: string;
+      verification?: ProviderVerification;
+    };
+    realtime: {
+      baseUrl?: string;
+      model?: string;
+      apiKeySet: boolean;
+      apiKeyHint?: string;
+      verification?: ProviderVerification;
+    };
     localRealtime: { model?: string };
   };
   ui: {
@@ -117,11 +300,17 @@ export interface PublicSettings {
     fontScale: FontScale;
     theme: ThemeMode;
     lang: UiLang;
+    autoLaunch: boolean;
+    trayNoticeShown: boolean;
   };
   audio: { themDeviceId?: string; micEnabled: boolean; micDeviceId?: string };
 }
 
-/** Renderer -> main settings update. Plaintext apiKey in transit only. */
+/**
+ * Renderer -> main settings update. Plaintext apiKey in transit only.
+ * `apiKeyHint` is deliberately absent: it is derived main-side when a key is
+ * saved, so the renderer can never desync (or spoof) it.
+ */
 export interface SettingsPatch {
   llm?: {
     baseUrl?: string;
@@ -129,13 +318,33 @@ export interface SettingsPatch {
     answerLang?: AnswerLang;
     answerWithVision?: boolean;
     apiKey?: string;
+    providerId?: ProviderId;
+    verification?: ProviderVerification;
   };
-  vision?: { baseUrl?: string; model?: string; proxyUrl?: string; apiKey?: string };
+  vision?: {
+    baseUrl?: string;
+    model?: string;
+    proxyUrl?: string;
+    apiKey?: string;
+    providerId?: ProviderId;
+    verification?: ProviderVerification;
+  };
   asr?: {
     language?: AsrLanguage;
     backend?: 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
-    cloud?: { baseUrl?: string; model?: string; apiKey?: string };
-    realtime?: { baseUrl?: string; model?: string; apiKey?: string };
+    providerId?: ProviderId;
+    cloud?: {
+      baseUrl?: string;
+      model?: string;
+      apiKey?: string;
+      verification?: ProviderVerification;
+    };
+    realtime?: {
+      baseUrl?: string;
+      model?: string;
+      apiKey?: string;
+      verification?: ProviderVerification;
+    };
     localRealtime?: { model?: string };
   };
   ui?: {
@@ -146,6 +355,8 @@ export interface SettingsPatch {
     fontScale?: FontScale;
     theme?: ThemeMode;
     lang?: UiLang;
+    autoLaunch?: boolean;
+    trayNoticeShown?: boolean;
   };
   audio?: { themDeviceId?: string; micEnabled?: boolean; micDeviceId?: string };
 }
@@ -273,6 +484,17 @@ export type LlmEvent =
   | { requestId: string; kind: 'done'; text: string }
   | { requestId: string; kind: 'error'; message: string };
 
+// ---------- System tray (main -> renderer) ----------
+
+/**
+ * A tray menu entry the MAIN process cannot service on its own: capture,
+ * sessions and every panel live in the renderer. Main always makes the window
+ * visible first, so the renderer may assume it is on screen.
+ */
+export interface TrayCommandPayload {
+  command: TrayRendererCommand;
+}
+
 // ---------- IPC channel names ----------
 
 export const IPC = {
@@ -337,4 +559,40 @@ export const IPC = {
   /** invoke: ({memo, question, answer}) => string — async rolling interview
    * memo update (P1-5); cheap off-critical-path deepseek-chat call, '' = keep old */
   memoUpdate: 'llm:memo',
+  /** invoke: () => OnboardingState — first-run wizard state */
+  onboardingGet: 'onboarding:get',
+  /** invoke: (OnboardingProgressPatch) => OnboardingState — 保存并稍后继续 /
+   * dismissing the upgrade notice; never flips `completed` */
+  onboardingSaveProgress: 'onboarding:save-progress',
+  /** invoke: (OnboardingCompletePayload) => OnboardingState — wizard finished:
+   * persist completion, close the setup window and hand over to the main app */
+  onboardingComplete: 'onboarding:complete',
+  /** invoke: () => boolean — main window asks for the wizard again ("重新运行
+   * 配置向导" / the upgrade notice). Re-run mode keeps the main window alive
+   * and never quits the app when the wizard is closed. */
+  onboardingRerun: 'onboarding:rerun',
+  /** invoke: (url) => boolean — open an allowlisted https URL in the OS
+   * browser; the renderer can never navigate or window.open by itself */
+  externalOpen: 'app:open-external',
+  /** invoke: () => string — read the clipboard, ONLY from an explicit
+   * paste-button click (never polled) */
+  clipboardReadText: 'app:clipboard-read',
+  /** invoke: () => AppInfo */
+  appGetInfo: 'app:get-info',
+  /** invoke: (ProviderTestRequest) => ProviderTestResult — run one real
+   * connection test against a provider. Explicit user action only: never on
+   * startup, never polled, one minimal billable request per call. Main also
+   * records the verdict into the slot's `verification` (a dedicated store
+   * write that deliberately does NOT go through settings:set, which would
+   * restart the ASR engine). */
+  providerTest: 'provider:test',
+  /** invoke: () => string — plaintext, locally built support report. Contains
+   * no keys, no transcripts and no knowledge-base text (electron/diagnostics.ts) */
+  diagnosticsGet: 'diagnostics:get',
+  /** invoke: () => boolean — reveal the userData folder in Explorer/Finder */
+  logsOpenFolder: 'logs:open-folder',
+  /** main -> renderer: TrayCommandPayload — a tray menu entry that only the
+   * renderer can service (start/stop capture, new session, open a panel).
+   * Main shows the window before sending, so the UI is always visible. */
+  trayCommand: 'tray:command',
 } as const;

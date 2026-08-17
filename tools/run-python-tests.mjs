@@ -9,7 +9,7 @@ const candidates = process.env.MC_PYTHON
     ? [['py', ['-3']], ['python', []]]
     : [['python3', []], ['python', []]];
 
-const testArgs = ['-m', 'unittest', 'discover', '-s', 'test', '-p', 'test_funasr_device.py'];
+const testArgs = ['-m', 'unittest', 'discover', '-s', 'test', '-p', 'test_*.py'];
 let lastError = null;
 for (const [command, prefix] of candidates) {
   const result = spawnSync(command, [...prefix, ...testArgs], { stdio: 'inherit' });

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: typecheck, test, build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # tools/*.py are import-only stdlib modules; a bare interpreter is enough
+      # (no torch / funasr / transformers needed for the unit tests)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # npm ci runs postinstall -> patch-package, which is what keeps
+      # transformers.js patched for whisper-large-v3-turbo
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Python sidecar tests
+        run: npm run test:python
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify transformers.js patch survived
+        run: npm run verify:patched

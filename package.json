@@ -1,6 +1,6 @@
 {
   "name": "meeting-copilot",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Real-time meeting/interview copilot for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "JWM0203",
@@ -19,11 +19,16 @@
     "test:python": "node tools/run-python-tests.mjs",
     "test:all": "npm test && npm run test:python",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "verify:patched": "node tools/verify-patched.mjs",
+    "dist:dir": "npm run build && npm run verify:patched && electron-builder --dir",
+    "dist:win": "npm run build && npm run verify:patched && electron-builder --win nsis portable",
     "harness": "node tools/asr-harness.mjs",
     "smoke:llm": "vite-node tools/llm-smoke.ts",
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
-    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs"
+    "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
+    "smoke:packaged": "node tools/packaged-smoke.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
@@ -38,6 +43,7 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "41.1.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "patch-package": "^8.0.0",
     "react": "^19.1.0",

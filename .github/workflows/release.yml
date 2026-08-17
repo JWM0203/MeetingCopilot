@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  # One build job per platform. Each one only has to upload an artifact; the
+  # `release` job below collects whatever is there. Adding macOS later means
+  # copying this job with runs-on: macos-latest and `electron-builder --mac`,
+  # nothing else changes.
+  build-windows:
+    name: build windows installers
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # typecheck + unit tests + build; dist:win re-runs the build and also
+      # hard-fails if patch-package did not survive the install
+      - name: Verify
+        run: npm run verify
+
+      - name: Build installers
+        run: npm run dist:win
+
+      # unsigned beta: publish checksums so users can at least verify the
+      # download matches what CI produced
+      - name: Compute SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release -Filter *.exe -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $line = "$hash  $($_.Name)"
+            Set-Content -Path "$($_.FullName).sha256" -Value $line -Encoding ascii
+            Write-Host $line
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            release/*.exe
+            release/*.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  # build-macos:
+  #   Add when the macOS target lands. Upload as `macos-installers`; the
+  #   release job picks it up automatically via download-artifact's glob.
+
+  release:
+    name: draft github release
+    needs: [build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List collected files
+        run: find artifacts -type f -printf '%10s  %p\n'
+
+      # draft, never auto-published: a human checks the binaries and writes the
+      # notes before anyone can download them
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: artifacts/**/*
