@@ -8,6 +8,8 @@ declare global {
     mcSetup: McSetupApi;
     /** E2E hook: main calls this (with user gesture) when MC_AUTOSTART=1 */
     __mcAutoStart?: () => void;
+    /** visual-QA hook: main calls this when MC_MAIN_SHOT=<dir> */
+    __mcOpenSettings?: () => void;
   }
 }
 

@@ -14,7 +14,7 @@ import {
   screen,
   session,
 } from 'electron';
-import { readFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   captureKindForPlatform,
@@ -254,6 +254,38 @@ function bootstrap(): void {
           .executeJavaScript(js, true)
           .then((r) => console.log('[e2e-llm]', JSON.stringify(r)))
           .catch((e) => console.log('[e2e-llm] threw', (e as Error).message));
+      }
+      // Visual QA of the main window (same spirit as MC_SETUP_SHOT for the
+      // wizard): open the settings panel, let it paint, capture a PNG.
+      if (process.env.MC_MAIN_SHOT) {
+        const dir = process.env.MC_MAIN_SHOT;
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        const shoot = async (name: string): Promise<void> => {
+          const image = await win?.webContents.capturePage();
+          if (!image) return;
+          mkdirSync(dir, { recursive: true });
+          const file = join(dir, `${name}.png`);
+          writeFileSync(file, image.toPNG());
+          console.log(`[main] screenshot ${file}`);
+        };
+        void (async () => {
+          try {
+            await win?.webContents.executeJavaScript(
+              'window.__mcOpenSettings && window.__mcOpenSettings()',
+              true,
+            );
+            await wait(1200);
+            await shoot('main-settings-common');
+            // expand 高级 and scroll to it, so the collapsed half is reviewable too
+            await win?.webContents.executeJavaScript(
+              `(()=>{const p=document.querySelector('.settings');if(!p)return 0;p.querySelectorAll('details').forEach(d=>d.open=true);p.scrollTop=p.scrollHeight;return p.scrollHeight;})()`,
+            );
+            await wait(600);
+            await shoot('main-settings-advanced');
+          } catch (e) {
+            console.warn('[main] screenshot failed:', (e as Error).message);
+          }
+        })();
       }
       if (process.env.MC_E2E_SHOT) {
         const q = process.env.MC_E2E_SHOT;

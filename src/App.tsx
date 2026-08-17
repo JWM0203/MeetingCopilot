@@ -352,6 +352,9 @@ export function App() {
     const offShot = window.mc.onShotHotkey(() => void doRegionShot());
 
     window.__mcAutoStart = () => void startCapture();
+    // visual-QA hook (MC_MAIN_SHOT in electron/main.ts): open the settings
+    // panel from the main process so it can be screenshotted
+    window.__mcOpenSettings = () => setShowSettings(true);
     return () => {
       off();
       offLlm();

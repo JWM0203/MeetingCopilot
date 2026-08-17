@@ -652,6 +652,61 @@ body {
   justify-content: flex-end;
 }
 
+/* 常用 / 高级 split (Phase 2): everything that needs a URL, a model id or a
+ * proxy hides behind this disclosure so the common panel stays short. */
+.settings-advanced {
+  margin: 4px 0 12px;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.settings-advanced > summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--section-text);
+  letter-spacing: 0.4px;
+  list-style: none;
+}
+
+.settings-advanced > summary::before {
+  content: '▸ ';
+}
+
+.settings-advanced[open] > summary::before {
+  content: '▾ ';
+}
+
+.settings-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-advanced[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* API-key status line: 已配置 ••••1234 [更换][删除][测试] */
+.key-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.key-mask {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.settings-inline-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
 /* ---------- status bar ---------- */
 .statusbar {
   display: flex;
