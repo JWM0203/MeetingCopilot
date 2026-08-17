@@ -94,6 +94,9 @@ function bootstrap(): void {
   let win: BrowserWindow | null = null;
   /** first-run wizard window; mutually exclusive with `win` until completion */
   let setupWin: BrowserWindow | null = null;
+  /** the wizard was reopened from a running main window (设置 → 重新运行配置
+   * 向导 / the upgrade notice). Re-run mode never quits the app. */
+  let setupRerun = false;
   let settings: SettingsStore;
   let knowledge: KnowledgeStore;
   let sessionStore: SessionStore;
@@ -320,13 +323,14 @@ function bootstrap(): void {
    * sidecar, no cloud connection and no LLM prewarm — an unconfigured machine
    * must not spawn anything.
    */
-  function openSetupWindow(): void {
+  function openSetupWindow(rerun = false): void {
     if (setupWin) {
       if (setupWin.isMinimized()) setupWin.restore();
       setupWin.show();
       setupWin.focus();
       return;
     }
+    setupRerun = rerun;
     const w = createSetupWindow();
     setupWin = w;
 
@@ -338,9 +342,10 @@ function bootstrap(): void {
     }
 
     w.on('close', (e) => {
-      // completion closes this window programmatically, and an OS shutdown /
-      // app.quit() must never be blocked by a modal — no prompt in either case
-      if (quitting || settings.data.onboarding.completed) return;
+      // completion closes this window programmatically, an OS shutdown /
+      // app.quit() must never be blocked by a modal, and a re-run just puts
+      // the user back into a working app — no prompt in any of those cases
+      if (quitting || setupRerun || settings.data.onboarding.completed) return;
       const t = T();
       const choice = dialog.showMessageBoxSync(w, {
         type: 'warning',
@@ -356,8 +361,20 @@ function bootstrap(): void {
     });
 
     w.on('closed', () => {
+      const wasRerun = setupRerun;
       setupWin = null;
-      // closed without finishing => nothing is configured; Phase 4 adds a tray
+      setupRerun = false;
+      if (wasRerun) {
+        // keys saved before the user backed out still have to reach the engine
+        if (pendingAsrRestart) {
+          pendingAsrRestart = false;
+          void asr.stop().then(() => startAsr());
+        }
+        win?.focus();
+        return;
+      }
+      // first-run launch closed without finishing => nothing is configured and
+      // there is no other window; Phase 4 adds a tray
       if (!settings.data.onboarding.completed) app.quit();
     });
   }
@@ -513,11 +530,21 @@ function bootstrap(): void {
       const state = settings.completeOnboarding(payload ?? {});
       // create the main window BEFORE closing the wizard: closing the last
       // window first would fire window-all-closed and quit the app mid-handover
-      if (!win) startMainApp();
-      // startMainApp() already builds the engine from the finished settings
+      if (!win) {
+        // startMainApp() already builds the engine from the finished settings
+        startMainApp();
+      } else if (pendingAsrRestart) {
+        // re-run: the main window kept running, so apply the deferred rebuild
+        void asr.stop().then(() => startAsr());
+      }
       pendingAsrRestart = false;
       setupWin?.close();
       return state;
+    });
+    // main window -> "重新运行配置向导" / the upgrade notice
+    ipcMain.handle(IPC.onboardingRerun, () => {
+      openSetupWindow(true);
+      return true;
     });
 
     // ---- app shell services (wizard + main window) ----

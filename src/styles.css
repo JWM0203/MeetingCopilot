@@ -343,6 +343,24 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* one-time pointer at the setup wizard for profiles migrated from v1 */
+.upgrade-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.upgrade-banner span {
+  margin-right: auto;
+}
+
 /* transient KB parse warning (e.g. scanned PDF with no text layer) */
 .kb-notice {
   padding: 4px 10px;

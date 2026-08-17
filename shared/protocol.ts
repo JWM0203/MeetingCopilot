@@ -65,6 +65,10 @@ export interface OnboardingState {
   selectedPlan?: OnboardingPlan;
   /** grandfathered users dismissed the "there is a wizard now" notice */
   dismissedUpgradePrompt?: boolean;
+  /** set once by the v1 -> v2 migration: this profile was configured by hand
+   * before the wizard existed, so the main window offers the upgrade notice.
+   * A fresh profile that completed the wizard never carries it. */
+  migratedFromV1?: boolean;
 }
 
 /** renderer -> main partial onboarding update (never touches `completed`) */
@@ -480,6 +484,10 @@ export const IPC = {
   /** invoke: (OnboardingCompletePayload) => OnboardingState — wizard finished:
    * persist completion, close the setup window and hand over to the main app */
   onboardingComplete: 'onboarding:complete',
+  /** invoke: () => boolean — main window asks for the wizard again ("重新运行
+   * 配置向导" / the upgrade notice). Re-run mode keeps the main window alive
+   * and never quits the app when the wizard is closed. */
+  onboardingRerun: 'onboarding:rerun',
   /** invoke: (url) => boolean — open an allowlisted https URL in the OS
    * browser; the renderer can never navigate or window.open by itself */
   externalOpen: 'app:open-external',

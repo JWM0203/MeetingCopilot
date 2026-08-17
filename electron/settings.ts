@@ -144,8 +144,15 @@ export function migrateSettingsV1ToV2(
   const next = mergeWithDefaults(raw, defaultSettings(platform));
 
   // existing users are grandfathered past the wizard; keep any progress fields
-  // a re-run may already have written
-  next.onboarding = { ...next.onboarding, schemaVersion: 1, completed: true };
+  // a re-run may already have written. `migratedFromV1` is what lets the main
+  // window tell a hand-configured profile from one the wizard produced, so the
+  // upgrade notice only reaches the former.
+  next.onboarding = {
+    ...next.onboarding,
+    schemaVersion: 1,
+    completed: true,
+    migratedFromV1: true,
+  };
 
   next.llm.providerId = providerIdForEndpoint(next.llm.baseUrl, next.llm.model, 'text-llm');
   if (next.vision.baseUrl && next.vision.model) {

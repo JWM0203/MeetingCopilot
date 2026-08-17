@@ -21,6 +21,8 @@ export interface McApi {
    * upgrade notice — completing onboarding belongs to the setup window) */
   getOnboarding(): Promise<OnboardingState>;
   saveOnboardingProgress(patch: OnboardingProgressPatch): Promise<OnboardingState>;
+  /** reopen the setup wizard without closing the app (settings / upgrade notice) */
+  rerunOnboarding(): Promise<boolean>;
   importKnowledge(): Promise<{ chars: number }>;
   clearKnowledge(): Promise<{ chars: number }>;
   /** pick a resume/JD document for the current session (.md/.txt/.docx/.pdf) */
@@ -74,6 +76,7 @@ const api: McApi = {
   setSettings: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch),
   getOnboarding: () => ipcRenderer.invoke(IPC.onboardingGet),
   saveOnboardingProgress: (patch) => ipcRenderer.invoke(IPC.onboardingSaveProgress, patch),
+  rerunOnboarding: () => ipcRenderer.invoke(IPC.onboardingRerun),
   importKnowledge: () => ipcRenderer.invoke(IPC.knowledgeImport),
   clearKnowledge: () => ipcRenderer.invoke(IPC.knowledgeClear),
   pickKnowledge: (slot) => ipcRenderer.invoke(IPC.knowledgePick, slot),

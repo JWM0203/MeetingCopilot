@@ -25,6 +25,9 @@ const zh = {
     micStartFail: (msg: string) => `麦克风启动失败: ${msg}`,
     themInputSwitchFail: (msg: string) => `对方音频输入切换失败: ${msg}`,
     translateFail: '（翻译失败）',
+    upgradeNotice: 'MeetingCopilot 现在提供新的配置向导和连接测试。',
+    upgradeCheck: '立即检查配置',
+    upgradeSkip: '暂时跳过',
     kbNoText: (name: string) =>
       `「${name}」没有可提取的文本（扫描版 PDF？请换文字版或 .md/.txt）`,
   },
@@ -230,6 +233,9 @@ const en: Dict = {
     micStartFail: (msg: string) => `Microphone failed to start: ${msg}`,
     themInputSwitchFail: (msg: string) => `Failed to switch the other-party input: ${msg}`,
     translateFail: '(translation failed)',
+    upgradeNotice: 'MeetingCopilot now has a setup wizard and connection tests.',
+    upgradeCheck: 'Check my setup',
+    upgradeSkip: 'Not now',
     kbNoText: (name: string) =>
       `"${name}" has no extractable text (scanned PDF? Use a text-based file or .md/.txt)`,
   },

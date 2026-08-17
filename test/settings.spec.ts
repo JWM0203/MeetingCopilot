@@ -268,6 +268,13 @@ describe('migrateSettingsV1ToV2 (pure)', () => {
     expect(v2.onboarding.selectedPlan).toBeUndefined();
   });
 
+  it('marks the profile as migrated so the upgrade notice can target it', () => {
+    expect(migrateSettingsV1ToV2(V1_FILE).onboarding.migratedFromV1).toBe(true);
+    // a brand new profile is NOT a migrated one — it must never see the notice
+    expect(defaultSettings().onboarding.migratedFromV1).toBeUndefined();
+    expect(migrateSettingsV1ToV2(V1_FILE).onboarding.dismissedUpgradePrompt).toBeUndefined();
+  });
+
   it('infers providerId from the catalog by exact baseUrl+model', () => {
     const v2 = migrateSettingsV1ToV2(V1_FILE);
     expect(v2.llm.providerId).toBe('deepseek');

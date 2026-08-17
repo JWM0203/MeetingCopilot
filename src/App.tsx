@@ -634,6 +634,20 @@ export function App() {
     [patchSession, currentMaterial],
   );
 
+  /** the v1 -> v2 migration marks hand-configured profiles; show the notice
+   * once until the user dismisses it (persisted in onboarding state) */
+  const showUpgradeNotice =
+    !!settings &&
+    settings.version === 2 &&
+    settings.onboarding.completed &&
+    !!settings.onboarding.migratedFromV1 &&
+    !settings.onboarding.dismissedUpgradePrompt;
+
+  const dismissUpgradeNotice = async () => {
+    const onboarding = await window.mc.saveOnboardingProgress({ dismissedUpgradePrompt: true });
+    setSettings((s) => (s ? { ...s, onboarding } : s));
+  };
+
   const visionReady =
     !!settings?.llm.answerWithVision &&
     !!settings?.vision.baseUrl &&
@@ -742,6 +756,21 @@ export function App() {
         </div>
       </header>
 
+      {/* grandfathered users (settings.json predates the wizard) get one
+          dismissible pointer at the new wizard; wizard-created profiles never
+          carry onboarding.migratedFromV1, so they never see it */}
+      {showUpgradeNotice && (
+        <div className="upgrade-banner">
+          <span>{t.app.upgradeNotice}</span>
+          <button className="btn btn-sm btn-primary" onClick={() => void window.mc.rerunOnboarding()}>
+            {t.app.upgradeCheck}
+          </button>
+          <button className="btn btn-sm" onClick={() => void dismissUpgradeNotice()}>
+            {t.app.upgradeSkip}
+          </button>
+        </div>
+      )}
+
       {showSettings && settings && (
         <SettingsPanel
           settings={settings}
@@ -751,6 +780,10 @@ export function App() {
             setShowSettings(false);
           }}
           onClose={() => setShowSettings(false)}
+          onRerunWizard={() => {
+            setShowSettings(false);
+            void window.mc.rerunOnboarding();
+          }}
         />
       )}
 
