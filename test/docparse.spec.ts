@@ -7,14 +7,14 @@ import { DOC_EXTENSIONS, extractDocText, normalizeDocText } from '../electron/do
 const FIX = join(__dirname, 'fixtures');
 
 describe('extractDocText (deterministic resume/JD parsing)', () => {
-  // mammoth/pdf-parse cold-load can exceed vitest's 5 s default on CI runners
-  it('reads a .docx via mammoth (zh + en)', { timeout: 30_000 }, async () => {
+  // mammoth/pdf-parse cold-load can exceed vitest default; observed 43 s+ on slow GitHub Windows runners
+  it('reads a .docx via mammoth (zh + en)', { timeout: 120_000 }, async () => {
     const text = await extractDocText(join(FIX, 'sample.docx'));
     expect(text).toContain('Docx fixture resume');
     expect(text).toContain('项目经历：实时转录 whisper DirectML');
   });
 
-  it('reads a .pdf via pdf-parse without page-number artifacts', { timeout: 30_000 }, async () => {
+  it('reads a .pdf via pdf-parse without page-number artifacts', { timeout: 120_000 }, async () => {
     const text = await extractDocText(join(FIX, 'sample.pdf'));
     expect(text).toContain('Resume PDF fixture: Python and SQL');
     expect(text).not.toContain('-- 1 of 1 --');
