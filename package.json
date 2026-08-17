@@ -1,6 +1,6 @@
 {
   "name": "meeting-copilot",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Real-time meeting/interview copilot for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "JWM0203",
