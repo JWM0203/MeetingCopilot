@@ -44,6 +44,8 @@ import {
   type AsrEvent,
   type LlmAskPayload,
   type LlmEvent,
+  type OnboardingCompletePayload,
+  type OnboardingProgressPatch,
   type SettingsPatch,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
@@ -391,6 +393,15 @@ function bootstrap(): void {
       }
       return publicSettings();
     });
+    // ---- first-run wizard state (settings v2) ----
+    ipcMain.handle(IPC.onboardingGet, () => settings.getOnboarding());
+    ipcMain.handle(IPC.onboardingSaveProgress, (_e, patch: OnboardingProgressPatch = {}) =>
+      settings.saveOnboardingProgress(patch ?? {}),
+    );
+    ipcMain.handle(IPC.onboardingComplete, (_e, payload: OnboardingCompletePayload = {}) =>
+      settings.completeOnboarding(payload ?? {}),
+    );
+
     ipcMain.handle(IPC.knowledgeImport, async () => {
       const r = await dialog.showOpenDialog({
         title: T().kbImportTitle,
