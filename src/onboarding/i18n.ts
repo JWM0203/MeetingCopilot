@@ -117,6 +117,10 @@ const zh = {
     prefixHint: (prefix: string) => `该服务的 Key 通常以 ${prefix} 开头，请确认已完整复制。`,
     saveFail: (msg: string) => `保存失败：${msg}`,
     linkFail: '无法打开该链接，请手动在浏览器中访问。',
+    weakCryptoWarning:
+      '当前系统无法使用安全凭据存储。API Key 只能以弱保护方式保存。建议修复系统凭据服务后再继续。',
+    weakCryptoBack: '返回',
+    weakCryptoContinue: '了解风险并继续',
   },
   connection: {
     title: '连接测试',
@@ -304,6 +308,10 @@ const en: SetupDict = {
       `Keys for this service usually start with ${prefix} — double-check that you copied all of it.`,
     linkFail: 'That link could not be opened; please visit it in your browser.',
     saveFail: (msg: string) => `Could not save: ${msg}`,
+    weakCryptoWarning:
+      'This system cannot use secure credential storage. API keys can only be saved with weak protection. Consider repairing the system credential service before continuing.',
+    weakCryptoBack: 'Go back',
+    weakCryptoContinue: 'I understand the risk — continue',
   },
   connection: {
     title: 'Checks',

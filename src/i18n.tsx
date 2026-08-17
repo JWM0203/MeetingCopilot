@@ -151,6 +151,10 @@ const zh = {
     keyUndoDelete: '撤销删除',
     keyNewPlaceholder: '粘贴新的 API Key',
     keySanitizedHint: '保存时会自动去除首尾空格、引号或 Bearer 前缀。',
+    weakCryptoWarning:
+      '当前系统无法使用安全凭据存储。API Key 只能以弱保护方式保存。建议修复系统凭据服务后再继续。',
+    weakCryptoBack: '返回',
+    weakCryptoContinue: '了解风险并继续',
     testConnection: '测试连接',
     testUntested: '未测试（后续版本提供）',
     answerLangLabel: 'AI 回答语言',
@@ -364,6 +368,10 @@ const en: Dict = {
     keyNewPlaceholder: 'Paste a new API key',
     keySanitizedHint:
       'Saving strips surrounding whitespace, wrapping quotes and a Bearer prefix automatically.',
+    weakCryptoWarning:
+      'This system cannot use secure credential storage. API keys can only be saved with weak protection. Consider repairing the system credential service before continuing.',
+    weakCryptoBack: 'Go back',
+    weakCryptoContinue: 'I understand the risk — continue',
     testConnection: 'Test connection',
     testUntested: 'Not tested (coming in a later version)',
     answerLangLabel: 'AI answer language',

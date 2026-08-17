@@ -177,6 +177,7 @@ function bootstrap(): void {
 
   const safeCipher: SecretCipher = {
     available: () => safeStorage.isEncryptionAvailable(),
+    secure: true,
     encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
     decrypt: (b64) => safeStorage.decryptString(Buffer.from(b64, 'base64')),
   };

@@ -42,6 +42,8 @@ export interface ApiKeyCardProps {
   /** overrides the catalog preset name (one card standing for two slots) */
   name?: string;
   description?: string;
+  /** the OS credential store is unavailable: confirm before persisting a key */
+  weakCrypto: boolean;
   /** persists the sanitized plaintext; rejects with a message on failure */
   onSave: (apiKey: string) => Promise<void>;
   onOpenExternal: (url: string) => Promise<boolean>;
@@ -59,6 +61,7 @@ export function ApiKeyCard({
   lang,
   name: nameOverride,
   description: descriptionOverride,
+  weakCrypto,
   onSave,
   onOpenExternal,
   onReadClipboard,
@@ -71,6 +74,8 @@ export function ApiKeyCard({
   const [notices, setNotices] = useState<Notice[]>([]);
   const [justSaved, setJustSaved] = useState(false);
   const [tutorial, setTutorial] = useState(false);
+  /** the weak-crypto confirmation is pending; nothing has been persisted yet */
+  const [confirmWeak, setConfirmWeak] = useState(false);
 
   const help = preset.help;
   const steps = lang === 'zh' ? help.stepsZh : help.stepsEn;
@@ -111,7 +116,25 @@ export function ApiKeyCard({
     }
   };
 
+  /**
+   * Pre-flight, not post-hoc: on a machine without OS credential storage the
+   * user is asked BEFORE the plaintext leaves the renderer, so 「返回」 really
+   * means the key was never persisted.
+   */
+  const requestSave = () => {
+    if (!sanitizeApiKeyInput(value).value) {
+      setNotices([{ kind: 'warn', text: t.provider.emptyKey }]);
+      return;
+    }
+    if (weakCrypto) {
+      setConfirmWeak(true);
+      return;
+    }
+    void save();
+  };
+
   const save = async () => {
+    setConfirmWeak(false);
     const clean = sanitizeApiKeyInput(value);
     if (!clean.value) {
       setNotices([{ kind: 'warn', text: t.provider.emptyKey }]);
@@ -218,8 +241,21 @@ export function ApiKeyCard({
               </button>
             </div>
             <div className="key-hint">{t.provider.encHint}</div>
+            {confirmWeak && (
+              <div className="key-notice key-notice-warn">
+                <div>{t.provider.weakCryptoWarning}</div>
+                <div className="key-actions" style={{ marginTop: 8 }}>
+                  <button className="btn btn-sm" onClick={() => setConfirmWeak(false)}>
+                    {t.provider.weakCryptoBack}
+                  </button>
+                  <button className="btn btn-sm" onClick={() => void save()}>
+                    {t.provider.weakCryptoContinue}
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="key-actions" style={{ marginTop: 10 }}>
-              <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
+              <button className="btn btn-primary" disabled={busy} onClick={requestSave}>
                 {busy ? t.provider.saving : t.provider.saveAndTest}
               </button>
               {configured && (
@@ -229,6 +265,7 @@ export function ApiKeyCard({
                     setEditing(false);
                     setValue('');
                     setNotices([]);
+                    setConfirmWeak(false);
                   }}
                 >
                   {t.provider.cancelReplace}

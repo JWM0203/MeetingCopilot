@@ -725,6 +725,19 @@ body {
   line-height: 1.5;
 }
 
+/* blocking warning shown BEFORE a key is handed to the main process */
+.settings-warn {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--tag-wait-text);
+  background: var(--tag-wait-bg);
+  border: 1px solid var(--on-border);
+  border-color: var(--tag-wait-text);
+}
+
 /* ---------- status bar ---------- */
 .statusbar {
   display: flex;

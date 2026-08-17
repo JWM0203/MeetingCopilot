@@ -24,6 +24,12 @@ import { providerIdForEndpoint } from '../shared/providerCatalog';
 
 export interface SecretCipher {
   available(): boolean;
+  /**
+   * true only for OS-backed encryption. The plain fallback sets it to false so
+   * the store can tell the UI that keys are merely obfuscated on this machine
+   * (PublicSettings.weakCrypto).
+   */
+  readonly secure: boolean;
   /** plaintext -> base64 ciphertext */
   encrypt(plain: string): string;
   /** base64 ciphertext -> plaintext */
@@ -33,6 +39,7 @@ export interface SecretCipher {
 /** Fallback when OS encryption is unavailable: marked base64 (obfuscation only). */
 export const plainCipher: SecretCipher = {
   available: () => true,
+  secure: false,
   encrypt: (plain) => `plain:${Buffer.from(plain, 'utf8').toString('base64')}`,
   decrypt: (b64) =>
     b64.startsWith('plain:') ? Buffer.from(b64.slice(6), 'base64').toString('utf8') : '',
@@ -355,6 +362,8 @@ export class SettingsStore {
     const d = this.data;
     return {
       version: 2,
+      // the renderer must be able to warn before it hands over a plaintext key
+      weakCrypto: !this.cipher.secure,
       onboarding: { ...d.onboarding },
       llm: {
         baseUrl: d.llm.baseUrl,

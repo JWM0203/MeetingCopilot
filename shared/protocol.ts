@@ -179,6 +179,13 @@ export interface SettingsFile {
 /** What the renderer is allowed to see (no secrets). */
 export interface PublicSettings {
   version: 2;
+  /**
+   * true when the OS credential store is unavailable and API keys can only be
+   * obfuscated (the plainCipher fallback). NOT persisted — it describes the
+   * running machine, and both `settings:get` and `settings:set` report it so
+   * the UI can warn BEFORE a key is sent for saving.
+   */
+  weakCrypto: boolean;
   /** first-run wizard state — public so the UI can show the upgrade notice */
   onboarding: OnboardingState;
   llm: {

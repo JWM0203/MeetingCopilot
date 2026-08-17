@@ -76,6 +76,7 @@ export function ProviderStep({
           hint={slotState(settings, def.llm.slot).hint}
           t={t}
           lang={lang}
+          weakCrypto={settings.weakCrypto}
           onSave={(key) => onSaveKey([def.asr!.slot, def.llm!.slot], key)}
           onOpenExternal={onOpenExternal}
           onReadClipboard={onReadClipboard}
@@ -89,6 +90,7 @@ export function ProviderStep({
               {...slotState(settings, def.asr.slot)}
               t={t}
               lang={lang}
+              weakCrypto={settings.weakCrypto}
               onSave={(key) => onSaveKey([def.asr!.slot], key)}
               onOpenExternal={onOpenExternal}
               onReadClipboard={onReadClipboard}
@@ -101,6 +103,7 @@ export function ProviderStep({
               {...slotState(settings, def.llm.slot)}
               t={t}
               lang={lang}
+              weakCrypto={settings.weakCrypto}
               onSave={(key) => onSaveKey([def.llm!.slot], key)}
               onOpenExternal={onOpenExternal}
               onReadClipboard={onReadClipboard}

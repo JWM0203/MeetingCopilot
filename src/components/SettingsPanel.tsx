@@ -109,6 +109,8 @@ export function SettingsPanel({
   const [micDeviceId, setMicDeviceId] = useState(settings.audio.micDeviceId ?? '');
   const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  /** weak-crypto confirmation is pending; nothing has been sent to main yet */
+  const [confirmWeak, setConfirmWeak] = useState(false);
 
   const llmKey = useKeySlot();
   const visionKey = useKeySlot();
@@ -124,7 +126,26 @@ export function SettingsPanel({
   /** preset display name in the current UI language */
   const presetName = (p: ProviderPreset): string => (t.uiLang === 'zh' ? p.nameZh : p.nameEn);
 
+  /** a save that would persist at least one NEW plaintext key (a deletion is
+   * `''`, which never writes a secret and therefore needs no warning) */
+  const savesAKey = (): boolean =>
+    [llmKey, visionKey, cloudKey, rtKey].some((s) => {
+      const v = s.patchValue();
+      return v !== undefined && v !== '';
+    });
+
+  /** pre-flight: ask before the plaintext leaves the renderer, so 「返回」
+   * really means the key was never persisted */
+  const requestSave = () => {
+    if (settings.weakCrypto && savesAKey()) {
+      setConfirmWeak(true);
+      return;
+    }
+    void save();
+  };
+
   const save = async () => {
+    setConfirmWeak(false);
     setSaving(true);
     try {
       const llmApiKey = llmKey.patchValue();
@@ -564,8 +585,22 @@ export function SettingsPanel({
         </div>
       </details>
 
+      {confirmWeak && (
+        <div className="settings-warn">
+          <div>{t.settings.weakCryptoWarning}</div>
+          <div className="settings-actions" style={{ marginTop: 6 }}>
+            <button className="btn btn-sm" onClick={() => setConfirmWeak(false)}>
+              {t.settings.weakCryptoBack}
+            </button>
+            <button className="btn btn-sm" onClick={() => void save()}>
+              {t.settings.weakCryptoContinue}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="settings-actions">
-        <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>
+        <button className="btn btn-primary" onClick={requestSave} disabled={saving}>
           {saving ? t.settings.saving : t.settings.save}
         </button>
         <button className="btn" onClick={onClose}>

@@ -7,12 +7,14 @@ import {
   apiKeyHint,
   defaultSettings,
   migrateSettingsV1ToV2,
+  plainCipher,
   type SecretCipher,
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
+  secure: true,
   encrypt: (plain) => `enc:${Buffer.from(plain, 'utf8').toString('base64')}`,
   decrypt: (s) => (s.startsWith('enc:') ? Buffer.from(s.slice(4), 'base64').toString('utf8') : ''),
 };
@@ -404,6 +406,29 @@ describe('SettingsStore v1 -> v2 load path', () => {
       lastStep: 3,
       selectedPlan: 'recommended',
     });
+  });
+});
+
+describe('weak-crypto reporting', () => {
+  it('reports secure storage when the OS cipher is in use', () => {
+    expect(new SettingsStore(file, fakeCipher).getPublic().weakCrypto).toBe(false);
+  });
+
+  it('flags the plainCipher fallback so the UI can warn before saving a key', () => {
+    const s = new SettingsStore(file, plainCipher);
+    expect(s.getPublic().weakCrypto).toBe(true);
+    // the flag survives a save round-trip: settings:set returns getPublic()
+    s.applyPatch({ llm: { apiKey: 'sk-weak-1234' } });
+    const pub = s.getPublic();
+    expect(pub.weakCrypto).toBe(true);
+    expect(pub.llm.apiKeySet).toBe(true);
+    expect(JSON.stringify(pub)).not.toContain('sk-weak-1234');
+  });
+
+  it('is a runtime flag, never persisted to disk', () => {
+    const s = new SettingsStore(file, plainCipher);
+    s.applyPatch({ llm: { apiKey: 'sk-weak-1234' } });
+    expect(readFileSync(file, 'utf8')).not.toContain('weakCrypto');
   });
 });
 
