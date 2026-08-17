@@ -3,12 +3,16 @@ import type {
   AnswerLang,
   AsrLanguage,
   FontScale,
+  ProviderSlot,
+  ProviderTestResult,
+  ProviderVerification,
   PublicSettings,
   ThemeMode,
   UiLang,
 } from '../../shared/protocol';
 import {
   LOCAL_REALTIME_MODELS,
+  PROVIDER_HELP,
   findPresetById,
   findPresetByEndpoint,
   presetsForCapability,
@@ -16,9 +20,17 @@ import {
   type ProviderCapability,
   type ProviderPreset,
 } from '../../shared/providerCatalog';
+import {
+  candidateKeyTest,
+  isTestableTarget,
+  storedKeyTest,
+  type EndpointTarget,
+} from '../../shared/providerTestRequests';
 import { sanitizeApiKeyInput } from '../../shared/keyInput';
 import { listMics } from '../audio/micCapture';
 import { useT } from '../i18n';
+import { ConnectionResult } from './providers/ConnectionResult';
+import { connectionResultCopy } from './providers/copy';
 
 type AsrBackend = 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
 
@@ -63,6 +75,35 @@ function useKeySlot() {
 }
 
 type KeySlot = ReturnType<typeof useKeySlot>;
+
+/** in-flight / finished connection test for one provider slot */
+interface SlotTest {
+  testing: boolean;
+  result?: ProviderTestResult;
+  at?: number;
+  /** the IPC itself failed (provider failures arrive as a result, not a throw) */
+  error?: string;
+  /** the verdict belongs to a key that is typed but not saved yet */
+  candidate?: boolean;
+}
+
+/** the public (secret-free) view of one credential slot */
+function publicSlot(
+  s: PublicSettings,
+  slot: ProviderSlot,
+): { apiKeySet: boolean; apiKeyHint?: string; verification?: ProviderVerification } {
+  switch (slot) {
+    case 'llm':
+      return s.llm;
+    case 'vision':
+      return s.vision;
+    case 'asr-cloud':
+      return s.asr.cloud;
+    case 'asr-realtime':
+    default:
+      return s.asr.realtime;
+  }
+}
 
 /**
  * BYOK settings (R7). Reorganised in Phase 2 into 常用 / 高级 (SPEC §G) and
@@ -117,11 +158,62 @@ export function SettingsPanel({
   const cloudKey = useKeySlot();
   const rtKey = useKeySlot();
 
+  /**
+   * Live secret-free snapshot. The props seed the form once (uncontrolled by
+   * design: the panel is a draft the user commits with 保存), but 已配置 flags
+   * and connection-test verdicts must reflect what the main process just
+   * recorded — a test writes `verification` through a dedicated store write.
+   */
+  const [live, setLive] = useState<PublicSettings>(settings);
+  const [tests, setTests] = useState<Partial<Record<ProviderSlot, SlotTest>>>({});
+  const anyTesting = Object.values(tests).some((s) => s?.testing);
+  const resultCopy = connectionResultCopy(t);
+
   useEffect(() => {
     void listMics()
       .then(setDevices)
       .catch(() => setDevices([]));
   }, []);
+
+  /**
+   * One real provider round-trip on an explicit click. A key typed above wins
+   * over the stored one — that is the 更换 Key flow's whole question — and the
+   * candidate is NOT saved by the test: 保存 still commits the form.
+   */
+  const runSlotTest = async (slot: ProviderSlot, target: EndpointTarget, candidate: string) => {
+    setTests((s) => ({ ...s, [slot]: { testing: true, candidate: candidate !== '' } }));
+    try {
+      const result = await window.mc.providerTest(
+        candidate ? candidateKeyTest(target, candidate) : storedKeyTest(target),
+      );
+      setTests((s) => ({
+        ...s,
+        [slot]: { testing: false, result, at: Date.now(), candidate: candidate !== '' },
+      }));
+    } catch (e) {
+      setTests((s) => ({
+        ...s,
+        [slot]: { testing: false, error: t.settings.testCrashed((e as Error).message) },
+      }));
+    }
+    try {
+      // main recorded the verdict into the slot — re-read so 上次测试… is current
+      setLive(await window.mc.getSettings());
+    } catch {
+      /* the verdict is already on screen; a stale snapshot is not worth failing */
+    }
+  };
+
+  /** the provider's own key page, for the failure path */
+  const keyPageFor = (target: EndpointTarget): string | undefined =>
+    findPresetByEndpoint(target.baseUrl, target.model, target.capability)?.help.keyUrl ??
+    PROVIDER_HELP[target.providerId].keyUrl;
+
+  const verificationSummary = (v: ProviderVerification | undefined): string => {
+    if (!v?.lastTestAt) return t.settings.testNever;
+    const when = new Date(v.lastTestAt).toLocaleString(t.locale);
+    return v.lastTestOk ? t.settings.testLastOk(when, v.latencyMs) : t.settings.testLastFail(when);
+  };
 
   /** preset display name in the current UI language */
   const presetName = (p: ProviderPreset): string => (t.uiLang === 'zh' ? p.nameZh : p.nameEn);
@@ -250,67 +342,141 @@ export function SettingsPanel({
     );
   };
 
-  const keyRow = (label: string, slot: KeySlot, apiKeySet: boolean, hint?: string) => (
-    <div className="settings-row">
-      <label>{label}</label>
-      {apiKeySet && !slot.editing && !slot.pendingDelete ? (
+  const keyRow = (label: string, slot: KeySlot, slotId: ProviderSlot, target: EndpointTarget) => {
+    const pub = publicSlot(live, slotId);
+    const apiKeySet = pub.apiKeySet;
+    const hint = pub.apiKeyHint;
+    const state = tests[slotId];
+    const candidate = sanitizeApiKeyInput(slot.value).value;
+    const canTest =
+      isTestableTarget(target) && !slot.pendingDelete && (candidate !== '' || apiKeySet);
+    const keyUrl = keyPageFor(target);
+    return (
+      <div className="settings-row">
+        <label>{label}</label>
+        {apiKeySet && !slot.editing && !slot.pendingDelete ? (
+          <div className="key-status">
+            <span className="tag tag-ok">{t.settings.keyConfigured}</span>
+            {hint && <span className="key-mask">{`••••${hint}`}</span>}
+            <button className="btn btn-sm" onClick={() => slot.setEditing(true)}>
+              {t.settings.keyReplace}
+            </button>
+            {slot.confirming ? (
+              <>
+                <span className="settings-inline-hint">{t.settings.keyDeleteConfirm}</span>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    slot.setPendingDelete(true);
+                    slot.setConfirming(false);
+                  }}
+                >
+                  {t.settings.keyDeleteYes}
+                </button>
+                <button className="btn btn-sm" onClick={() => slot.setConfirming(false)}>
+                  {t.settings.keyDeleteNo}
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-sm" onClick={() => slot.setConfirming(true)}>
+                {t.settings.keyDelete}
+              </button>
+            )}
+          </div>
+        ) : slot.pendingDelete ? (
+          <div className="key-status">
+            <span className="tag tag-err">{t.settings.keyPendingDelete}</span>
+            <button className="btn btn-sm" onClick={slot.reset}>
+              {t.settings.keyUndoDelete}
+            </button>
+          </div>
+        ) : (
+          <>
+            <input
+              type="password"
+              value={slot.value}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => slot.setValue(e.target.value)}
+              placeholder={apiKeySet ? t.settings.keyNewPlaceholder : 'sk-…'}
+            />
+            <span className="settings-inline-hint">
+              {apiKeySet ? t.settings.keyKeepPlaceholder : t.settings.keyMissing} ·{' '}
+              {t.settings.keySanitizedHint}
+            </span>
+          </>
+        )}
+
         <div className="key-status">
-          <span className="tag tag-ok">{t.settings.keyConfigured}</span>
-          {hint && <span className="key-mask">{`••••${hint}`}</span>}
-          <button className="btn btn-sm" onClick={() => slot.setEditing(true)}>
-            {t.settings.keyReplace}
+          <button
+            className="btn btn-sm"
+            disabled={!canTest || anyTesting}
+            title={canTest ? undefined : t.settings.testNoKey}
+            onClick={() => void runSlotTest(slotId, target, candidate)}
+          >
+            {state?.testing ? t.settings.testing : t.settings.testConnection}
           </button>
-          {slot.confirming ? (
-            <>
-              <span className="settings-inline-hint">{t.settings.keyDeleteConfirm}</span>
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  slot.setPendingDelete(true);
-                  slot.setConfirming(false);
-                }}
-              >
-                {t.settings.keyDeleteYes}
-              </button>
-              <button className="btn btn-sm" onClick={() => slot.setConfirming(false)}>
-                {t.settings.keyDeleteNo}
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-sm" onClick={() => slot.setConfirming(true)}>
-              {t.settings.keyDelete}
+          <span className="settings-inline-hint">{verificationSummary(pub.verification)}</span>
+        </div>
+
+        <ConnectionResult
+          copy={resultCopy}
+          result={state?.result ?? null}
+          testing={state?.testing}
+          message={
+            state?.result
+              ? t.uiLang === 'zh'
+                ? state.result.messageZh
+                : state.result.messageEn
+              : undefined
+          }
+          hint={state?.result ? t.settings.testHints[state.result.code] : undefined}
+          at={state?.at}
+        >
+          {keyUrl && (
+            <button className="btn btn-sm" onClick={() => void window.mc.openExternal(keyUrl)}>
+              {t.settings.testOpenKeyPage}
             </button>
           )}
-          <button className="btn btn-sm" disabled title={t.settings.testUntested}>
-            {t.settings.testConnection}
-          </button>
-          <span className="settings-inline-hint">{t.settings.testUntested}</span>
-        </div>
-      ) : slot.pendingDelete ? (
-        <div className="key-status">
-          <span className="tag tag-err">{t.settings.keyPendingDelete}</span>
-          <button className="btn btn-sm" onClick={slot.reset}>
-            {t.settings.keyUndoDelete}
-          </button>
-        </div>
-      ) : (
-        <>
-          <input
-            type="password"
-            value={slot.value}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => slot.setValue(e.target.value)}
-            placeholder={apiKeySet ? t.settings.keyNewPlaceholder : 'sk-…'}
-          />
-          <span className="settings-inline-hint">
-            {apiKeySet ? t.settings.keyKeepPlaceholder : t.settings.keyMissing} ·{' '}
-            {t.settings.keySanitizedHint}
-          </span>
-        </>
-      )}
-    </div>
-  );
+        </ConnectionResult>
+        {state?.result?.ok && state.candidate && (
+          <span className="settings-inline-hint">{t.settings.testCandidateOk}</span>
+        )}
+        {state?.error && <div className="settings-warn">{state.error}</div>}
+      </div>
+    );
+  };
+
+  /** where each key row points its connection test */
+  const llmTarget = (): EndpointTarget => ({
+    capability: 'text-llm',
+    providerId: providerIdForEndpoint(baseUrl.trim(), model.trim(), 'text-llm'),
+    baseUrl,
+    model,
+    slot: 'llm',
+  });
+  const visionTarget = (): EndpointTarget => ({
+    capability: 'vision',
+    providerId: providerIdForEndpoint(visionBaseUrl.trim(), visionModel.trim(), 'vision'),
+    baseUrl: visionBaseUrl,
+    model: visionModel,
+    slot: 'vision',
+    ...(visionProxy.trim() ? { proxyUrl: visionProxy.trim() } : {}),
+  });
+  const cloudTarget = (): EndpointTarget => ({
+    capability: 'asr-segment',
+    providerId: providerIdForEndpoint(cloudBaseUrl.trim(), cloudModel.trim(), 'asr-segment'),
+    baseUrl: cloudBaseUrl,
+    model: cloudModel,
+    slot: 'asr-cloud',
+  });
+  const rtTarget = (): EndpointTarget => ({
+    capability: 'asr-realtime',
+    providerId: providerIdForEndpoint(rtBaseUrl.trim(), rtModel.trim(), 'asr-realtime'),
+    baseUrl: rtBaseUrl,
+    model: rtModel,
+    slot: 'asr-realtime',
+  });
 
   const asrSummary = (): string => {
     if (asrBackend === 'local') return t.settings.asrLocalWhisper;
@@ -349,6 +515,9 @@ export function SettingsPanel({
         {t.settings.planSection}: {t.settings.planAsr} — {asrSummary()} · {t.settings.planLlm} —{' '}
         {llmSummary()}
       </div>
+      {/* said once for the whole panel: every 测试连接 button below costs one
+          minimal billable request, and tests only ever run on a click */}
+      <div className="settings-hint">{t.settings.testFeeNote}</div>
 
       {window.mc.platform === 'darwin' && (
         <div className="settings-hint">{t.settings.macAudioHint}</div>
@@ -387,12 +556,7 @@ export function SettingsPanel({
               setRtModel(p.model);
             })}
           </div>
-          {keyRow(
-            t.settings.rtApiKey,
-            rtKey,
-            settings.asr.realtime.apiKeySet,
-            settings.asr.realtime.apiKeyHint,
-          )}
+          {keyRow(t.settings.rtApiKey, rtKey, 'asr-realtime', rtTarget())}
         </>
       )}
       {asrBackend === 'cloud' && (
@@ -404,12 +568,7 @@ export function SettingsPanel({
               setCloudModel(p.model);
             })}
           </div>
-          {keyRow(
-            t.settings.cloudApiKey,
-            cloudKey,
-            settings.asr.cloud.apiKeySet,
-            settings.asr.cloud.apiKeyHint,
-          )}
+          {keyRow(t.settings.cloudApiKey, cloudKey, 'asr-cloud', cloudTarget())}
         </>
       )}
       <div className="settings-row">
@@ -430,7 +589,7 @@ export function SettingsPanel({
           setModel(p.model);
         })}
       </div>
-      {keyRow(t.settings.apiKey, llmKey, settings.llm.apiKeySet, settings.llm.apiKeyHint)}
+      {keyRow(t.settings.apiKey, llmKey, 'llm', llmTarget())}
       <div className="settings-row">
         <label>{t.settings.answerLangLabel}</label>
         <select value={answerLang} onChange={(e) => setAnswerLang(e.target.value as AnswerLang)}>
@@ -542,12 +701,7 @@ export function SettingsPanel({
             spellCheck={false}
           />
         </div>
-        {keyRow(
-          t.settings.visionApiKey,
-          visionKey,
-          settings.vision.apiKeySet,
-          settings.vision.apiKeyHint,
-        )}
+        {keyRow(t.settings.visionApiKey, visionKey, 'vision', visionTarget())}
         <div className="settings-row">
           <label>{t.settings.visionProxy}</label>
           <input

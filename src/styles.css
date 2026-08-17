@@ -725,6 +725,78 @@ body {
   line-height: 1.5;
 }
 
+/* ---------- connection-test verdict (shared component) ----------
+ * src/components/providers/ConnectionResult.tsx renders in BOTH renderer
+ * entries, so these class names exist here and in src/onboarding/setup.css,
+ * each against its own theme tokens. */
+.conn-result {
+  margin-top: 6px;
+}
+
+.conn-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.conn-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.conn-msg {
+  font-size: 11px;
+  color: var(--text-body);
+}
+
+.conn-hint {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.conn-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.conn-detail-toggle {
+  margin-top: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--accent-text);
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.conn-detail {
+  margin-top: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-1);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.conn-detail-k {
+  display: inline-block;
+  min-width: 64px;
+  color: var(--text-faint);
+}
+
+.conn-detail-v {
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
 /* blocking warning shown BEFORE a key is handed to the main process */
 .settings-warn {
   margin-bottom: 10px;
