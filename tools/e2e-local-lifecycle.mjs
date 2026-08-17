@@ -30,7 +30,7 @@ const timeout = setTimeout(() => {
 
 child.on('exit', (code) => {
   clearTimeout(timeout);
-  const sidecarReady = output.includes('[sidecar] local funasr ready');
+  const sidecarReady = output.includes('[sidecar] local ASR ready');
   const workerReady = output.includes('[asr] ready ep=cloud-rt');
   const fatal = output.includes('[asr] error (fatal=true)');
   if (code === 0 && sidecarReady && workerReady && !fatal) {
