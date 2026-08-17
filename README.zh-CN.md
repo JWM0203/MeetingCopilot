@@ -10,7 +10,7 @@
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-3da639?style=flat-square" alt="license"></a>
 <a href="https://github.com/JWM0203/MeetingCopilot"><img src="https://img.shields.io/badge/GitHub-仓库-181717?style=flat-square&logo=github" alt="GitHub 仓库"></a>
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-国内镜像-C71D23?style=flat-square&logo=gitee" alt="Gitee 国内镜像"></a>
-<a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
+<a href="https://www.xiaohongshu.com/discovery/item/6a50ddc800000000080027a6?source=webshare&xhsshare=pc_web&xsec_token=YBsteWYkixo34xXwfYeNXKL1SFbiOeg7mxQAZyq7wQIc4=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
 [English](README.md) · [功能亮点](#功能亮点) · [快速开始](#快速开始) · [分平台部署](#分平台部署) · [转录后端](#转录后端) · [协议](#协议)
 

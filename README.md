@@ -10,7 +10,7 @@ Live transcription of the other side · first-person teleprompter answers · cap
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-3da639?style=flat-square" alt="license"></a>
 <a href="https://github.com/JWM0203/MeetingCopilot"><img src="https://img.shields.io/badge/GitHub-repo-181717?style=flat-square&logo=github" alt="GitHub repo"></a>
 <a href="https://gitee.com/jwm0302/MeetingCopilot"><img src="https://img.shields.io/badge/Gitee-China%20mirror-C71D23?style=flat-square&logo=gitee" alt="Gitee mirror"></a>
-<a href="https://www.xiaohongshu.com/discovery/item/6a50df530000000007020f79?source=webshare&xhsshare=pc_web&xsec_token=ABbqtJXWoEQSYl-hNrBxJbXeGEZWoH6YjnAYj97pjKEpo=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
+<a href="https://www.xiaohongshu.com/discovery/item/6a50ddc800000000080027a6?source=webshare&xhsshare=pc_web&xsec_token=YBsteWYkixo34xXwfYeNXKL1SFbiOeg7mxQAZyq7wQIc4=&xsec_source=pc_share"><img src="https://img.shields.io/badge/小红书-视频介绍-ff2442?style=flat-square&logo=xiaohongshu&logoColor=white" alt="小红书视频介绍"></a>
 
 [简体中文](README.zh-CN.md) · [Features](#features) · [Quick Start](#quick-start) · [Platform Setup](#platform-setup) · [ASR Backends](#asr-backends) · [License](#license)
 
