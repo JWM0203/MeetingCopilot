@@ -11,7 +11,9 @@ const question = '用一句话回答：一加一等于几？答案里必须包�
 
 const child = spawn(electron, [root], {
   cwd: root,
-  env: { ...process.env, MC_E2E_LLM: question },
+  // MC_DEV_DEFAULT_LOCAL_ASR: this check exercises the main-window path; a
+  // profile that never ran the first-run wizard would open the setup window
+  env: { ...process.env, MC_E2E_LLM: question, MC_DEV_DEFAULT_LOCAL_ASR: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 

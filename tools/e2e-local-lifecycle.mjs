@@ -9,7 +9,13 @@ const electron = require('electron');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const child = spawn(electron, [root], {
   cwd: root,
-  env: { ...process.env, MC_E2E_QUIT_ON_ASR_READY: '1' },
+  env: {
+    ...process.env,
+    MC_E2E_QUIT_ON_ASR_READY: '1',
+    // this check exercises the main-window path; without it a profile that has
+    // never run the first-run wizard would boot into the setup window instead
+    MC_DEV_DEFAULT_LOCAL_ASR: '1',
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 

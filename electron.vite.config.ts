@@ -52,7 +52,20 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'electron/preload.ts') },
+        // `setup` is the minimal bridge for the onboarding window; the main
+        // overlay keeps the full McApi in `index`.
+        //
+        // Preloads run sandboxed (Electron's default with contextIsolation),
+        // where `require` is a polyfill that cannot resolve sibling files. Any
+        // module imported by BOTH entries would be split into
+        // out/preload/chunks/*.js and neither preload would load at all
+        // (window.mc silently undefined). electron/setupPreload.ts therefore
+        // shares no runtime module with electron/preload.ts — see the comment
+        // on its channel table.
+        input: {
+          index: resolve(__dirname, 'electron/preload.ts'),
+          setup: resolve(__dirname, 'electron/setupPreload.ts'),
+        },
       },
     },
   },
@@ -63,7 +76,10 @@ export default defineConfig({
     resolve: { alias: { '@shared': resolve(__dirname, 'shared') } },
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/index.html') },
+        input: {
+          index: resolve(__dirname, 'src/index.html'),
+          setup: resolve(__dirname, 'src/setup.html'),
+        },
       },
     },
   },

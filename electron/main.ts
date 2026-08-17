@@ -25,6 +25,7 @@ import { openExternalUrl } from './externalLinks';
 import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
+import { SETUP_READY_MARKER, createSetupWindow } from './setupWindow';
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
 import { DOC_EXTENSIONS, extractDocText } from './docparse';
@@ -91,10 +92,14 @@ if (!app.requestSingleInstanceLock()) {
 
 function bootstrap(): void {
   let win: BrowserWindow | null = null;
+  /** first-run wizard window; mutually exclusive with `win` until completion */
+  let setupWin: BrowserWindow | null = null;
   let settings: SettingsStore;
   let knowledge: KnowledgeStore;
   let sessionStore: SessionStore;
   let osLang: UiLang = 'zh';
+  /** set by before-quit so window handlers stop prompting mid-shutdown */
+  let quitting = false;
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
 
@@ -269,6 +274,60 @@ function bootstrap(): void {
     }
   }
 
+  /** normal boot: warm the ASR worker, bind hotkeys, show the overlay */
+  function startMainApp(): void {
+    void startAsr();
+    registerHotkeys();
+    createWindow();
+  }
+
+  /**
+   * First-run gate. While the wizard is up there is no ASR worker, no python
+   * sidecar, no cloud connection and no LLM prewarm — an unconfigured machine
+   * must not spawn anything.
+   */
+  function openSetupWindow(): void {
+    if (setupWin) {
+      if (setupWin.isMinimized()) setupWin.restore();
+      setupWin.show();
+      setupWin.focus();
+      return;
+    }
+    const w = createSetupWindow();
+    setupWin = w;
+
+    // E2E: drive the wizard->main-app handover without a human click
+    if (process.env.MC_E2E_ONBOARDING_COMPLETE === '1') {
+      w.webContents.on('did-finish-load', () => {
+        void w.webContents.executeJavaScript('window.mcSetup.completeOnboarding({})', true);
+      });
+    }
+
+    w.on('close', (e) => {
+      // completion closes this window programmatically, and an OS shutdown /
+      // app.quit() must never be blocked by a modal — no prompt in either case
+      if (quitting || settings.data.onboarding.completed) return;
+      const t = T();
+      const choice = dialog.showMessageBoxSync(w, {
+        type: 'warning',
+        title: t.setupQuitTitle,
+        message: t.setupQuitTitle,
+        detail: t.setupQuitMessage,
+        buttons: [t.setupQuitConfirm, t.setupQuitCancel],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (choice !== 0) e.preventDefault();
+    });
+
+    w.on('closed', () => {
+      setupWin = null;
+      // closed without finishing => nothing is configured; Phase 4 adds a tray
+      if (!settings.data.onboarding.completed) app.quit();
+    });
+  }
+
   app.whenReady().then(() => {
     // users who never chose a UI language get their OS language (zh → zh, else en)
     osLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
@@ -396,13 +455,28 @@ function bootstrap(): void {
       return publicSettings();
     });
     // ---- first-run wizard state (settings v2) ----
-    ipcMain.handle(IPC.onboardingGet, () => settings.getOnboarding());
+    let wizardReadyLogged = false;
+    ipcMain.handle(IPC.onboardingGet, (e) => {
+      // one-shot boot marker: the wizard's own renderer reached main, which
+      // proves setup.html loaded, its module graph ran and the setup preload
+      // bridge is live. tools/packaged-smoke.mjs asserts it.
+      if (!wizardReadyLogged && setupWin && e.sender === setupWin.webContents) {
+        wizardReadyLogged = true;
+        console.log(SETUP_READY_MARKER);
+      }
+      return settings.getOnboarding();
+    });
     ipcMain.handle(IPC.onboardingSaveProgress, (_e, patch: OnboardingProgressPatch = {}) =>
       settings.saveOnboardingProgress(patch ?? {}),
     );
-    ipcMain.handle(IPC.onboardingComplete, (_e, payload: OnboardingCompletePayload = {}) =>
-      settings.completeOnboarding(payload ?? {}),
-    );
+    ipcMain.handle(IPC.onboardingComplete, (_e, payload: OnboardingCompletePayload = {}) => {
+      const state = settings.completeOnboarding(payload ?? {});
+      // create the main window BEFORE closing the wizard: closing the last
+      // window first would fire window-all-closed and quit the app mid-handover
+      if (!win) startMainApp();
+      setupWin?.close();
+      return state;
+    });
 
     // ---- app shell services (wizard + main window) ----
     // The renderer never navigates: window.open is denied and will-navigate is
@@ -729,18 +803,25 @@ function bootstrap(): void {
       }
       win?.webContents.send(IPC.asrEvent, ev);
     });
-    void startAsr();
 
-    registerHotkeys();
-    createWindow();
+    // First run (or MC_FORCE_ONBOARDING=1 for testing): the wizard owns the
+    // whole startup — no overlay window, no ASR worker, no sidecar spawn.
+    if (process.env.MC_FORCE_ONBOARDING === '1' || !settings.data.onboarding.completed) {
+      openSetupWindow();
+    } else {
+      startMainApp();
+    }
   });
 
   app.on('second-instance', () => {
-    win?.show();
-    win?.focus();
+    const target = setupWin ?? win;
+    if (target?.isMinimized()) target.restore();
+    target?.show();
+    target?.focus();
   });
 
   app.on('before-quit', () => {
+    quitting = true;
     globalShortcut.unregisterAll();
     void asr.stop();
     void sidecar.stop();

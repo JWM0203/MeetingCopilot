@@ -470,6 +470,21 @@ describe('SettingsStore onboarding + key hints', () => {
     expect(s.data.asr.realtime?.verification).toBeUndefined();
   });
 
+  it('MC_DEV_DEFAULT_LOCAL_ASR=1 keeps the pre-wizard developer boot', () => {
+    const before = process.env.MC_DEV_DEFAULT_LOCAL_ASR;
+    try {
+      process.env.MC_DEV_DEFAULT_LOCAL_ASR = '1';
+      const s = new SettingsStore(file, fakeCipher);
+      // straight to the main window, with the local sidecar backend as before
+      expect(s.data.onboarding.completed).toBe(true);
+      expect(s.data.asr.backend).toBe('local-realtime');
+    } finally {
+      if (before === undefined) delete process.env.MC_DEV_DEFAULT_LOCAL_ASR;
+      else process.env.MC_DEV_DEFAULT_LOCAL_ASR = before;
+    }
+    expect(new SettingsStore(file, fakeCipher).data.onboarding.completed).toBe(false);
+  });
+
   it('round-trips providerId and verification through the public settings', () => {
     const s = new SettingsStore(file, fakeCipher);
     s.applyPatch({

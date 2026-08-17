@@ -42,9 +42,15 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
   const hotkeys = defaultHotkeysForPlatform(platform);
   return {
     version: 2,
-    // a brand new profile has never seen the wizard; the setup window owns
-    // startup until it completes (electron/main.ts gating)
-    onboarding: { schemaVersion: 1, completed: false },
+    // A brand new profile has never seen the wizard; the setup window owns
+    // startup until it completes (electron/main.ts gating).
+    // MC_DEV_DEFAULT_LOCAL_ASR=1 keeps the pre-wizard developer workflow:
+    // the defaults below already select the local Fun-ASR sidecar, so all the
+    // flag has to do is let boot go straight to the main window.
+    onboarding: {
+      schemaVersion: 1,
+      completed: process.env.MC_DEV_DEFAULT_LOCAL_ASR === '1',
+    },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
       // 'deepseek-chat' = v4-flash in NON-thinking mode (first token ~0.4 s).
