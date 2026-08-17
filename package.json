@@ -22,7 +22,7 @@
     "verify": "npm run typecheck && npm test && npm run build",
     "verify:patched": "node tools/verify-patched.mjs",
     "dist:dir": "npm run build && npm run verify:patched && electron-builder --dir",
-    "dist:win": "npm run build && npm run verify:patched && electron-builder --win nsis portable",
+    "dist:win": "npm run build && npm run verify:patched && electron-builder --win nsis portable --publish never",
     "harness": "node tools/asr-harness.mjs",
     "smoke:llm": "vite-node tools/llm-smoke.ts",
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
