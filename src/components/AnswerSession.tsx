@@ -29,6 +29,8 @@ export function AnswerSession({
   jdChars,
   notice,
   visionReady,
+  answersReady,
+  answersHint,
   onSwitch,
   onNew,
   onDelete,
@@ -50,6 +52,9 @@ export function AnswerSession({
   /** transient parse warning (e.g. scanned PDF with no text layer) */
   notice?: string | null;
   visionReady: boolean;
+  /** false = no LLM configured; asking is disabled with an explanation */
+  answersReady: boolean;
+  answersHint: string;
   onSwitch: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -214,15 +219,22 @@ export function AnswerSession({
           ))
         )}
       </div>
+      {!answersReady && <div className="kb-notice">{answersHint}</div>}
       <div className="answer-input">
         <input
           ref={inputRef}
+          disabled={!answersReady}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit();
           }}
-          placeholder={t.answer.freePlaceholder}
+          placeholder={answersReady ? t.answer.freePlaceholder : answersHint}
         />
-        <button className="btn btn-primary" onClick={submit}>
+        <button
+          className="btn btn-primary"
+          disabled={!answersReady}
+          title={answersReady ? undefined : answersHint}
+          onClick={submit}
+        >
           {t.answer.ask}
         </button>
         {visionReady && (

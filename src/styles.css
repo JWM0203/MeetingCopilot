@@ -856,6 +856,63 @@ body {
   color: var(--tag-err-text);
 }
 
+/* ---------- service health ----------
+ * Compact chips in the status bar; the whole group is ONE button so the bar
+ * gains a single affordance instead of three. */
+.health-chips {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.health-chip {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  white-space: nowrap;
+}
+
+.health-chip.is-ok {
+  background: var(--tag-ok-bg);
+  color: var(--tag-ok-text);
+}
+
+.health-chip.is-busy {
+  background: var(--tag-wait-bg);
+  color: var(--tag-wait-text);
+}
+
+.health-chip.is-bad {
+  background: var(--tag-err-bg);
+  color: var(--tag-err-text);
+}
+
+.health-panel .health-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.health-name {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 74px;
+}
+
+.health-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 .status-hud {
   display: flex;
   gap: 8px;

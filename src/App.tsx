@@ -16,10 +16,12 @@ import {
 } from '../shared/transcript';
 import { isLikelyQuestion } from '../shared/textHeuristics';
 import { captureKindForPlatform } from '../shared/platform';
+import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
 import { MicCapture, listMics } from './audio/micCapture';
 import { TranscriptPanel } from './components/TranscriptPanel';
 import { SettingsPanel } from './components/SettingsPanel';
+import { ServiceHealthPanel } from './components/ServiceHealthPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
@@ -71,6 +73,7 @@ export function App() {
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHealth, setShowHealth] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [hud, setHud] = useState<HudStats>({ count: 0 });
   const [continuous, setContinuous] = useState(false);
@@ -654,6 +657,18 @@ export function App() {
     !!settings?.vision.model &&
     !!settings?.vision.apiKeySet;
 
+  /**
+   * One derivation for the status chips, the health panel and the answer
+   * gating (shared/healthState.ts). A missing LLM key disables the answer
+   * buttons with an explanation instead of letting every click produce the
+   * same main-process error turn — but it never blocks transcription.
+   */
+  const health = useMemo(
+    () => (settings ? deriveServiceHealth({ settings, asr, capturing }) : null),
+    [settings, asr, capturing],
+  );
+  const answersReady = health?.answersAvailable ?? true;
+
   return (
     <I18nProvider lang={settings?.ui.lang}>
     <div className="app">
@@ -771,6 +786,20 @@ export function App() {
         </div>
       )}
 
+      {showHealth && settings && health && (
+        <ServiceHealthPanel
+          settings={settings}
+          health={health}
+          onClose={() => setShowHealth(false)}
+          onOpenSettings={() => {
+            setShowHealth(false);
+            setShowSettings(true);
+          }}
+          onOpenDiagnostics={() => setShowHealth(false)}
+          onSettingsRefreshed={setSettings}
+        />
+      )}
+
       {showSettings && settings && (
         <SettingsPanel
           settings={settings}
@@ -791,6 +820,8 @@ export function App() {
         <TranscriptPanel
           segments={segments}
           partials={partials}
+          answersReady={answersReady}
+          answersHint={t.health.answersDisabled}
           onAsk={(text) => askLlm('segment', text)}
           onTranslate={translateSegment}
           onClear={clearTranscript}
@@ -805,6 +836,8 @@ export function App() {
           jdChars={current?.jdText?.length ?? 0}
           notice={kbNotice}
           visionReady={visionReady}
+          answersReady={answersReady}
+          answersHint={t.health.answersDisabled}
           onSwitch={setCurrentId}
           onNew={createSession}
           onDelete={deleteSession}
@@ -818,7 +851,13 @@ export function App() {
         />
       </div>
 
-      <StatusBar asr={asr} capturing={capturing} hud={showHud ? hud : undefined} />
+      <StatusBar
+        asr={asr}
+        capturing={capturing}
+        hud={showHud ? hud : undefined}
+        health={health ?? undefined}
+        onOpenHealth={() => setShowHealth((v) => !v)}
+      />
     </div>
     </I18nProvider>
   );
