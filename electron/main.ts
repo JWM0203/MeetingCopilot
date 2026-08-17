@@ -100,6 +100,8 @@ function bootstrap(): void {
   let osLang: UiLang = 'zh';
   /** set by before-quit so window handlers stop prompting mid-shutdown */
   let quitting = false;
+  /** an ASR-affecting settings patch arrived while the wizard owned the flow */
+  let pendingAsrRestart = false;
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
 
@@ -448,7 +450,13 @@ function bootstrap(): void {
           patch.asr.realtime !== undefined ||
           patch.asr.localRealtime !== undefined)
       ) {
-        void asr.stop().then(() => startAsr());
+        // While the wizard is up the engine must NOT be rebuilt per key save:
+        // on a first run nothing is configured yet (a restart would spawn the
+        // local python sidecar the user never agreed to), and in a re-run it
+        // would bounce the live engine once per card. The wizard writes its
+        // plan as one final patch; the restart happens exactly once after it.
+        if (setupWin || !settings.data.onboarding.completed) pendingAsrRestart = true;
+        else void asr.stop().then(() => startAsr());
       } else if (patch.asr?.language) {
         asr.setLanguage(patch.asr.language);
       }
@@ -474,6 +482,8 @@ function bootstrap(): void {
       // create the main window BEFORE closing the wizard: closing the last
       // window first would fire window-all-closed and quit the app mid-handover
       if (!win) startMainApp();
+      // startMainApp() already builds the engine from the finished settings
+      pendingAsrRestart = false;
       setupWin?.close();
       return state;
     });

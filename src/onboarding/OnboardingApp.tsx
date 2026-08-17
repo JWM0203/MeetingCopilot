@@ -1,124 +1,315 @@
 /**
- * Onboarding wizard shell — PHASE 2a STUB.
+ * First-run wizard shell: progress indicator, persistent chrome and the step
+ * machine 欢迎 ─ 方案 ─ 服务配置 ─ 连接测试 ─ 完成.
  *
- * Phase 2b replaces the body of this component with the real 5-step wizard
- * (`src/onboarding/steps/*.tsx`) and moves every string into a typed zh/en
- * dictionary. What must survive that rewrite is what this stub proves:
- *   - src/setup.html builds and loads inside the packaged app;
- *   - the dedicated setup preload exposes window.mcSetup;
- *   - appGetInfo / onboardingGet / onboardingComplete round-trip over IPC;
- *   - shared/providerCatalog.ts is importable from the renderer.
- *
- * The copy below is deliberately temporary and NOT in the i18n dictionaries.
+ * Contracts this component owns:
+ *  - API keys are saved per card (each save touches only that provider's slot),
+ *    but the PLAN — backend, base URLs, models, providerIds, audio devices —
+ *    is written as ONE settings patch on completion, because every `asr.*`
+ *    patch rebuilds the ASR engine;
+ *  - 保存并稍后继续 persists lastStep + selectedPlan and closes the window; the
+ *    next launch resumes on that step (main quits when the wizard closes before
+ *    completion — accepted Phase 2 behaviour, the tray lands in Phase 4);
+ *  - the 中文/English toggle writes ui.lang immediately, so the language the
+ *    user picks here is the language the app starts in;
+ *  - 高级配置与本地模式 completes onboarding WITHOUT touching any setting, so
+ *    the user lands in the main window with the full settings panel.
  */
-import { useEffect, useState } from 'react';
-import type { AppInfo, OnboardingState } from '../../shared/protocol';
-import { PROVIDER_PRESETS } from '../../shared/providerCatalog';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  AppInfo,
+  OnboardingPlan,
+  PublicSettings,
+  ThemeMode,
+  UiLang,
+} from '../../shared/protocol';
+import { getSetupDict, type SetupDict } from './i18n';
+import { buildPlanPatch, keyPatchForSlot, mergeKeyPatches, planDefinition, type KeySlot } from '../../shared/onboardingPlans';
+import { WelcomeStep } from './steps/WelcomeStep';
+import { PlanStep } from './steps/PlanStep';
+import { ProviderStep, slotState } from './steps/ProviderStep';
+import { ConnectionStep } from './steps/ConnectionStep';
+import { CompleteStep } from './steps/CompleteStep';
 
-const page: React.CSSProperties = {
-  minHeight: '100vh',
-  margin: 0,
-  padding: '32px 40px',
-  background: '#161a22',
-  color: '#e8eaf0',
-  font: "14px/1.7 'Microsoft YaHei', system-ui, sans-serif",
-};
-const card: React.CSSProperties = {
-  marginTop: 20,
-  padding: '16px 18px',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 10,
-  background: 'rgba(255,255,255,0.04)',
-};
-const label: React.CSSProperties = { color: '#8b95ab', marginRight: 8 };
-const button: React.CSSProperties = {
-  marginTop: 24,
-  padding: '10px 22px',
-  border: 'none',
-  borderRadius: 8,
-  background: '#2a6df4',
-  color: '#fff',
-  font: "600 14px 'Microsoft YaHei', system-ui, sans-serif",
-  cursor: 'pointer',
-};
+const FIRST_STEP = 1;
+const LAST_STEP = 5;
+const HELP_URL = 'https://github.com/JWM0203/MeetingCopilot';
+
+/** dev/QA hook: `?step=4` jumps straight to a step so every screen can be
+ * screenshotted (electron/setupWindow.ts sets it from MC_SETUP_STEP). */
+function stepFromQuery(): number | null {
+  const raw = new URLSearchParams(window.location.search).get('step');
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= FIRST_STEP && n <= LAST_STEP ? n : null;
+}
+
+function applyTheme(theme: ThemeMode): void {
+  const resolved =
+    theme === 'system'
+      ? window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : 'dark'
+      : theme;
+  document.documentElement.dataset.theme = resolved;
+}
+
+/** every requirement the chosen plan puts on 「完成」 */
+function completionBlocked(
+  plan: OnboardingPlan,
+  settings: PublicSettings,
+  audioOk: boolean,
+): boolean {
+  const def = planDefinition(plan);
+  if (plan === 'advanced') return false;
+  if (def.asr && !slotState(settings, def.asr.slot).configured) return true;
+  if (def.llm && !slotState(settings, def.llm.slot).configured) return true;
+  return !audioOk;
+}
 
 export function OnboardingApp() {
+  const [step, setStep] = useState(FIRST_STEP);
+  const [lang, setLang] = useState<UiLang>('zh');
+  const [plan, setPlan] = useState<OnboardingPlan>('recommended');
+  const [shareMimoKey, setShareMimoKey] = useState(true);
+  const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [audioOk, setAudioOk] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
+  const [micDeviceId, setMicDeviceId] = useState('');
+  const [themDeviceId, setThemDeviceId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const t: SetupDict = useMemo(() => getSetupDict(lang), [lang]);
+
+  // ---- boot: settings + onboarding progress + app info ----
   useEffect(() => {
     let alive = true;
     void (async () => {
       try {
-        const [a, o] = await Promise.all([
-          window.mcSetup.getAppInfo(),
+        const [s, o, a] = await Promise.all([
+          window.mcSetup.getSettings(),
           window.mcSetup.getOnboarding(),
+          window.mcSetup.getAppInfo(),
         ]);
         if (!alive) return;
+        setSettings(s);
         setInfo(a);
-        setOnboarding(o);
+        setLang(s.ui.lang);
+        applyTheme(s.ui.theme);
+        setMicEnabled(s.audio.micEnabled);
+        setMicDeviceId(s.audio.micDeviceId ?? '');
+        setThemDeviceId(s.audio.themDeviceId ?? '');
+        if (o.selectedPlan && o.selectedPlan !== 'advanced') setPlan(o.selectedPlan);
+        const forced = stepFromQuery();
+        if (forced) setStep(forced);
+        else if (o.lastStep && o.lastStep >= FIRST_STEP && o.lastStep <= LAST_STEP) {
+          setStep(o.lastStep);
+        }
       } catch (e) {
-        if (alive) setError((e as Error).message);
+        if (alive) setError(t.common.bootFail((e as Error).message));
       }
     })();
     return () => {
       alive = false;
     };
+    // boot once; `t` is only read for the failure message
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const complete = async () => {
-    setBusy(true);
+  const toggleLang = useCallback(async () => {
+    const next: UiLang = lang === 'zh' ? 'en' : 'zh';
+    setLang(next);
     try {
-      // no plan is claimed: the stub configures nothing, it only unblocks boot
-      setOnboarding(await window.mcSetup.completeOnboarding({}));
+      setSettings(await window.mcSetup.setSettings({ ui: { lang: next } }));
+    } catch {
+      /* the wizard still renders in the new language; the patch retries on完成 */
+    }
+  }, [lang]);
+
+  const saveAndExit = useCallback(async () => {
+    try {
+      await window.mcSetup.saveOnboardingProgress({ lastStep: step, selectedPlan: plan });
+    } finally {
+      window.close();
+    }
+  }, [step, plan]);
+
+  const openHelp = useCallback(() => {
+    void window.mcSetup.openExternal(HELP_URL);
+  }, []);
+
+  /** one settings patch per card save; a shared key hits two slots at once */
+  const saveKey = useCallback(async (slots: KeySlot[], apiKey: string) => {
+    const patch = slots
+      .map((slot) => keyPatchForSlot(slot, apiKey))
+      .reduce((acc, p) => mergeKeyPatches(acc, p));
+    setSettings(await window.mcSetup.setSettings(patch));
+  }, []);
+
+  /** 高级配置与本地模式: complete with NO settings change */
+  const finishAdvanced = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await window.mcSetup.completeOnboarding({ selectedPlan: 'advanced' });
     } catch (e) {
-      setError((e as Error).message);
+      setError(t.complete.applyFail((e as Error).message));
       setBusy(false);
     }
-  };
+  }, [t]);
 
-  const recommended = PROVIDER_PRESETS.filter((p) => p.recommended);
+  /** 进入 MeetingCopilot: the single batched plan patch, then completion */
+  const finish = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await window.mcSetup.setSettings(
+        buildPlanPatch(plan, {
+          micEnabled,
+          micDeviceId,
+          themDeviceId: info?.platform === 'darwin' ? themDeviceId : undefined,
+          lang,
+        }),
+      );
+      await window.mcSetup.completeOnboarding({ selectedPlan: plan });
+    } catch (e) {
+      setError(t.complete.applyFail((e as Error).message));
+      setBusy(false);
+    }
+  }, [plan, micEnabled, micDeviceId, themDeviceId, lang, info, t]);
+
+  if (!settings) {
+    return (
+      <div className="setup">
+        <div className="setup-body">
+          <p className="setup-sub">{error ?? t.common.loading}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const blocked = completionBlocked(plan, settings, audioOk);
+  const nextDisabled = step === 4 && blocked;
+  const stepLabels = [
+    t.steps.welcome,
+    t.steps.plan,
+    t.steps.provider,
+    t.steps.connection,
+    t.steps.done,
+  ];
 
   return (
-    <div style={page}>
-      <h1 style={{ font: "600 22px 'Microsoft YaHei', system-ui, sans-serif" }}>MeetingCopilot</h1>
-      <p style={{ color: '#8b95ab', marginTop: 6 }}>
-        配置向导（开发占位页面，第 2b 阶段将替换为完整的 5 步向导）。
-      </p>
-
-      {error && (
-        <div style={{ ...card, borderColor: '#c04a4a', color: '#ffb4b4' }}>IPC 调用失败：{error}</div>
-      )}
-
-      <div style={card}>
-        <div>
-          <span style={label}>版本</span>
-          {info ? `${info.version}（${info.platform}${info.packaged ? '，已打包' : '，开发模式'}）` : '读取中…'}
+    <div className="setup">
+      <header className="setup-header">
+        <div className="setup-header-top">
+          <span className="setup-brand">
+            MeetingCopilot
+            {info ? ` · ${t.common.version(info.version, info.platform)}` : ''}
+          </span>
+          <button className="btn btn-sm" onClick={() => void toggleLang()}>
+            {t.common.langToggle}
+          </button>
         </div>
-        <div>
-          <span style={label}>向导状态</span>
-          {onboarding
-            ? `completed=${String(onboarding.completed)}${
-                onboarding.selectedPlan ? `，plan=${onboarding.selectedPlan}` : ''
-              }`
-            : '读取中…'}
+        <div className="setup-steps">
+          {stepLabels.map((label, i) => {
+            const n = i + 1;
+            const cls = n === step ? ' is-current' : n < step ? ' is-done' : '';
+            return (
+              <Fragment key={label}>
+                <div className={`setup-step${cls}`}>
+                  <span className="setup-step-dot">{n < step ? '✓' : n}</span>
+                  <span className="setup-step-label">{label}</span>
+                </div>
+                {n < LAST_STEP && <span className="setup-step-bar" />}
+              </Fragment>
+            );
+          })}
         </div>
-      </div>
+      </header>
 
-      <div style={card}>
-        <div style={{ color: '#8b95ab', marginBottom: 6 }}>推荐方案（来自服务商目录）</div>
-        {recommended.map((p) => (
-          <div key={p.id}>
-            {p.nameZh} <span style={{ color: '#6d7689' }}>· {p.id}</span>
-          </div>
-        ))}
-      </div>
+      <main className="setup-body">
+        {step === 1 && <WelcomeStep t={t} />}
+        {step === 2 && (
+          <PlanStep
+            t={t}
+            plan={plan}
+            onPick={setPlan}
+            shareMimoKey={shareMimoKey}
+            onShareMimoKey={setShareMimoKey}
+            onAdvanced={() => void finishAdvanced()}
+          />
+        )}
+        {step === 3 && (
+          <ProviderStep
+            t={t}
+            lang={lang}
+            plan={plan}
+            shareMimoKey={shareMimoKey}
+            settings={settings}
+            onSaveKey={saveKey}
+            onOpenExternal={(url) => window.mcSetup.openExternal(url)}
+            onReadClipboard={() => window.mcSetup.readClipboardText()}
+          />
+        )}
+        {step === 4 && (
+          <ConnectionStep
+            t={t}
+            plan={plan}
+            settings={settings}
+            platform={info?.platform ?? window.mcSetup.platform}
+            audioOk={audioOk}
+            onAudioOk={setAudioOk}
+            micEnabled={micEnabled}
+            onMicEnabled={setMicEnabled}
+            micDeviceId={micDeviceId}
+            onMicDeviceId={setMicDeviceId}
+            themDeviceId={themDeviceId}
+            onThemDeviceId={setThemDeviceId}
+          />
+        )}
+        {step === 5 && (
+          <CompleteStep
+            t={t}
+            lang={lang}
+            plan={plan}
+            settings={settings}
+            micEnabled={micEnabled}
+            busy={busy}
+            error={error}
+            onEnter={() => void finish()}
+            onEnterAndImport={() => void finish()}
+          />
+        )}
+        {step !== 5 && error && <div className="setup-error">{error}</div>}
+      </main>
 
-      <button style={button} onClick={complete} disabled={busy || !onboarding}>
-        {busy ? '正在进入…' : '完成配置'}
-      </button>
+      <footer className="setup-footer">
+        <div className="setup-footer-left">
+          <button className="btn" disabled={step === FIRST_STEP} onClick={() => setStep((s) => s - 1)}>
+            {t.common.back}
+          </button>
+          <button className="btn" onClick={() => void saveAndExit()}>
+            {t.common.saveAndExit}
+          </button>
+          <button className="btn-link" onClick={openHelp}>
+            {t.common.help}
+          </button>
+        </div>
+        <div className="setup-footer-right">
+          {nextDisabled && <span className="setup-footer-hint">{t.connection.blockedHint}</span>}
+          {step < LAST_STEP && (
+            <button
+              className="btn btn-primary"
+              disabled={nextDisabled || busy}
+              onClick={() => setStep((s) => s + 1)}
+            >
+              {step === FIRST_STEP ? t.welcome.start : t.common.next}
+            </button>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }
