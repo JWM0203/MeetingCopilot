@@ -1,0 +1,84 @@
+appId: com.jwm0203.meetingcopilot
+productName: MeetingCopilot
+copyright: Copyright © 2025 JWM0203
+
+directories:
+  buildResources: build
+  output: release
+
+# Only the compiled bundles ship. Production node_modules are added by
+# electron-builder itself (it walks the prod dependency tree separately), so
+# they must NOT be listed here. The negative patterns below are belt-and-braces
+# documentation of what must never reach a user's disk -- docs/ alone carries a
+# 6.8 MB demo video plus GIFs.
+files:
+  - out/**
+  - package.json
+  - '!src/**'
+  - '!test/**'
+  - '!docs/**'
+  - '!tools/**'
+  - '!patches/**'
+  - '!build/**'
+  - '!.github/**'
+  - '!**/*.md'
+  - '!**/*.tsbuildinfo'
+  - '!electron.vite.config.ts'
+  - '!tsconfig*.json'
+  - '!**/{.npmrc,.editorconfig,start.bat,start-funasr-local.bat}'
+
+asar: true
+# @huggingface/transformers is loaded through a dynamic ESM import of
+# transformers.node.mjs (electron/asr/engine.ts); an app.asar file:// URL is not
+# importable, and the silent CJS fallback would drop our cache_position patch.
+# onnxruntime-node carries native .node/.dll payloads. electron-builder already
+# auto-unpacks module roots containing native binaries, but onnxruntime-node is
+# pinned explicitly so a future detector change cannot break local Whisper.
+asarUnpack:
+  - node_modules/@huggingface/transformers/**
+  - node_modules/onnxruntime-node/**
+
+# Python sidecar scripts must live on the real filesystem (spawned by a Python
+# interpreter, never through Electron's asar shim). Packaged layout:
+#   resources/tools/*.py           <- getResourceRoot() + 'tools'
+#   resources/requirements-*.txt
+# funasr_stream_server.py imports funasr_device, moss_asr_server.py imports
+# moss_asr_utils -- sibling imports resolved via the script directory, so all
+# four files must land in the same folder.
+extraResources:
+  - from: tools
+    to: tools
+    filter:
+      - funasr_stream_server.py
+      - funasr_device.py
+      - moss_asr_server.py
+      - moss_asr_utils.py
+  - from: requirements-funasr.txt
+    to: requirements-funasr.txt
+  - from: requirements-moss.txt
+    to: requirements-moss.txt
+
+win:
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MeetingCopilot
+  # meeting notes, sessions and API keys live in %APPDATA%\MeetingCopilot --
+  # an uninstall (or an upgrade, which uninstalls first) must never wipe them
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}

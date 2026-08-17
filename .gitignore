@@ -3,6 +3,7 @@ node_modules/
 __pycache__/
 out/
 dist/
+release/
 models/
 *.log
 .vite/
