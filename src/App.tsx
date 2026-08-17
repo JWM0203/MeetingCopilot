@@ -43,6 +43,9 @@ export interface HudStats {
   count: number;
 }
 
+/** tray 「帮助与教程」 until the in-app help center lands (Phase 4 §B) */
+const HELP_URL = 'https://github.com/JWM0203/MeetingCopilot';
+
 const MAX_TURNS = 200;
 // v2: only the last 8 turns ride along verbatim — the rolling memo carries
 // older context, keeping per-request tokens flat as the interview runs long
@@ -596,6 +599,40 @@ export function App() {
     },
     [patchSession],
   );
+
+  /**
+   * Tray menu -> renderer (Phase 4 §A). Main only forwards what it cannot do
+   * itself, and it has already made the window visible. 开始/停止转写
+   * deliberately runs the SAME code path as the title-bar button, readiness
+   * gate included, so the two can never disagree. Re-subscribed whenever that
+   * state changes — cheaper and less error-prone than a fistful of refs.
+   */
+  useEffect(() => {
+    return window.mc.onTrayCommand(({ command }) => {
+      switch (command) {
+        case 'toggle-capture':
+          if (capturing) void stopCapture();
+          else if (asr.phase === 'ready') void startCapture();
+          return;
+        case 'new-session':
+          createSession();
+          return;
+        case 'open-settings':
+          setShowHealth(false);
+          setShowDiagnostics(false);
+          setShowSettings(true);
+          return;
+        case 'open-health':
+          setShowSettings(false);
+          setShowDiagnostics(false);
+          setShowHealth(true);
+          return;
+        case 'open-help':
+          void window.mc.openExternal(HELP_URL);
+          return;
+      }
+    });
+  }, [capturing, asr.phase, startCapture, stopCapture, createSession]);
 
   const pickKb = useCallback(
     async (slot: KbSlot) => {

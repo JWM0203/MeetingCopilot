@@ -86,6 +86,9 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
       theme: 'dark',
+      // opt-in only: a meeting copilot has no business starting itself
+      autoLaunch: false,
+      trayNoticeShown: false,
     },
     audio: {
       micEnabled: false,
@@ -436,7 +439,14 @@ export class SettingsStore {
       },
       // knowledge lives in a separate file; main fills the real char count
       knowledge: { chars: 0 },
-      ui: { ...d.ui, lang: d.ui.lang ?? this.fallbackUiLang },
+      ui: {
+        ...d.ui,
+        lang: d.ui.lang ?? this.fallbackUiLang,
+        // both are optional on disk (files written before Phase 4 lack them)
+        // but always booleans on the wire, so the UI needs no ?? dance
+        autoLaunch: !!d.ui.autoLaunch,
+        trayNoticeShown: !!d.ui.trayNoticeShown,
+      },
       audio: {
         themDeviceId: d.audio.themDeviceId,
         micEnabled: d.audio.micEnabled,

@@ -53,6 +53,8 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
       fontScale: 'medium',
       theme: 'dark',
       lang: 'zh',
+      autoLaunch: false,
+      trayNoticeShown: false,
     },
     audio: { micEnabled: false },
     ...over,

@@ -13,6 +13,7 @@ import {
   type PublicSettings,
   type SessionsFile,
   type SettingsPatch,
+  type TrayCommandPayload,
 } from '../shared/protocol';
 
 export interface McApi {
@@ -62,6 +63,9 @@ export interface McApi {
   memoUpdate(p: { memo: string; question: string; answer: string }): Promise<string>;
   onLlmEvent(cb: (ev: LlmEvent) => void): () => void;
   onShotHotkey(cb: () => void): () => void;
+  /** tray menu entries only the renderer can service (capture / session /
+   * panels). Main has already made the window visible when this fires. */
+  onTrayCommand(cb: (payload: TrayCommandPayload) => void): () => void;
   /** open an allowlisted https documentation link in the OS browser;
    * false = refused by the main-process allowlist */
   openExternal(url: string): Promise<boolean>;
@@ -122,6 +126,11 @@ const api: McApi = {
     const listener = () => cb();
     ipcRenderer.on(IPC.shotHotkey, listener);
     return () => ipcRenderer.removeListener(IPC.shotHotkey, listener);
+  },
+  onTrayCommand: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: TrayCommandPayload) => cb(payload);
+    ipcRenderer.on(IPC.trayCommand, listener);
+    return () => ipcRenderer.removeListener(IPC.trayCommand, listener);
   },
   openExternal: (url) => ipcRenderer.invoke(IPC.externalOpen, url),
   readClipboardText: () => ipcRenderer.invoke(IPC.clipboardReadText),

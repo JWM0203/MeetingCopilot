@@ -68,6 +68,13 @@ extraResources:
       - '*.wav'
   - from: resources/test-image.png
     to: resources/test-image.png
+  # System-tray icons (electron/tray.ts). Same mirrored-path trick as the test
+  # fixtures above: trayIconPath() joins getResourceRoot() + 'resources/tray',
+  # which is the repo folder in dev and this one once packaged.
+  - from: resources/tray
+    to: resources/tray
+    filter:
+      - '*.png'
 
 win:
   icon: build/icon.ico

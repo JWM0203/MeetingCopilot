@@ -6,6 +6,8 @@ export const PROTOCOL_VERSION = 1;
 
 import type { ProviderCapability, ProviderId } from './providerCatalog';
 export type { ProviderCapability, ProviderId } from './providerCatalog';
+import type { TrayRendererCommand } from './trayMenu';
+export type { TrayCommand, TrayRendererCommand } from './trayMenu';
 
 // ---------- Settings ----------
 
@@ -220,6 +222,10 @@ export interface SettingsFile {
     theme: ThemeMode;
     /** UI display language; absent = follow OS locale (zh → zh, else en) */
     lang?: UiLang;
+    /** start MeetingCopilot with the OS session; DEFAULT OFF, user opt-in only */
+    autoLaunch?: boolean;
+    /** the "still running in the tray" balloon was shown once; never repeated */
+    trayNoticeShown?: boolean;
   };
   audio: {
     /** input used for the other-party channel on platforms without loopback */
@@ -294,6 +300,8 @@ export interface PublicSettings {
     fontScale: FontScale;
     theme: ThemeMode;
     lang: UiLang;
+    autoLaunch: boolean;
+    trayNoticeShown: boolean;
   };
   audio: { themDeviceId?: string; micEnabled: boolean; micDeviceId?: string };
 }
@@ -347,6 +355,8 @@ export interface SettingsPatch {
     fontScale?: FontScale;
     theme?: ThemeMode;
     lang?: UiLang;
+    autoLaunch?: boolean;
+    trayNoticeShown?: boolean;
   };
   audio?: { themDeviceId?: string; micEnabled?: boolean; micDeviceId?: string };
 }
@@ -474,6 +484,17 @@ export type LlmEvent =
   | { requestId: string; kind: 'done'; text: string }
   | { requestId: string; kind: 'error'; message: string };
 
+// ---------- System tray (main -> renderer) ----------
+
+/**
+ * A tray menu entry the MAIN process cannot service on its own: capture,
+ * sessions and every panel live in the renderer. Main always makes the window
+ * visible first, so the renderer may assume it is on screen.
+ */
+export interface TrayCommandPayload {
+  command: TrayRendererCommand;
+}
+
 // ---------- IPC channel names ----------
 
 export const IPC = {
@@ -570,4 +591,8 @@ export const IPC = {
   diagnosticsGet: 'diagnostics:get',
   /** invoke: () => boolean — reveal the userData folder in Explorer/Finder */
   logsOpenFolder: 'logs:open-folder',
+  /** main -> renderer: TrayCommandPayload — a tray menu entry that only the
+   * renderer can service (start/stop capture, new session, open a panel).
+   * Main shows the window before sending, so the UI is always visible. */
+  trayCommand: 'tray:command',
 } as const;

@@ -35,6 +35,8 @@ import { resolveTestApiKey, runProviderTest, withoutCandidateKey } from './provi
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
 import { SETUP_READY_MARKER, createSetupWindow } from './setupWindow';
+import { AppTray, trayIconPath } from './tray';
+import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shared/trayMenu';
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
 import { DOC_EXTENSIONS, extractDocText } from './docparse';
@@ -65,6 +67,11 @@ import {
 import { mainStrings } from './uiStrings';
 
 const MODEL_ID = 'onnx-community/whisper-large-v3-turbo-ONNX';
+
+/** tray 「检查更新」 (Phase 4). A real updater is Phase 5; until then the honest
+ * answer is the releases page, opened through the same allowlist as every other
+ * documentation link. */
+const RELEASES_URL = 'https://github.com/JWM0203/MeetingCopilot/releases/latest';
 
 /** Region-selection overlay: shows the captured screen as an opaque bg (so a
  * content-protected window never renders black locally) and lets the user drag
@@ -116,8 +123,11 @@ function bootstrap(): void {
   let quitting = false;
   /** an ASR-affecting settings patch arrived while the wizard owned the flow */
   let pendingAsrRestart = false;
+  /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
+  let capturing = false;
   const asr = new AsrHost();
   const sidecar = new FunasrSidecar();
+  const tray = new AppTray();
 
   /** main-process strings in the current UI language */
   const T = () => mainStrings(settings.data.ui.lang, osLang);
@@ -200,20 +210,118 @@ function bootstrap(): void {
     return plainCipher;
   }
 
+  // ---- window visibility + system tray ----------------------------------
+  // Quit/hide matrix (Phase 4):
+  //   hide  (hotkey / 「—」 / tray toggle) -> window stays alive, app keeps
+  //         running, tray is the way back; NEVER quits.
+  //   quit  (titlebar ✕ / tray 退出 / OS shutdown) -> app.quit() -> before-quit
+  //         reaps the ASR utilityProcess, the python sidecar and the tray.
+  //   first-run wizard closed without completing -> app.quit() (Phase 2), since
+  //         nothing is configured and no main window exists yet.
+  //   re-run wizard closed -> main window keeps running; window-all-closed does
+  //         not fire because the overlay is still open (possibly hidden).
+
+  function showWindow(): void {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+
+  function toggleWindow(): void {
+    if (!win) return;
+    if (win.isVisible()) win.hide();
+    else showWindow();
+  }
+
+  function trayState(): TrayMenuState {
+    return { windowVisible: !!win?.isVisible(), capturing };
+  }
+
+  /** rebuild the tray menu — call after anything the menu shows has changed */
+  function refreshTray(): void {
+    tray.refresh();
+  }
+
+  function handleTrayCommand(command: TrayCommand): void {
+    if (command === 'quit') {
+      app.quit();
+      return;
+    }
+    if (command === 'toggle-window') {
+      toggleWindow();
+      return;
+    }
+    if (command === 'check-updates') {
+      void openExternalUrl(RELEASES_URL);
+      return;
+    }
+    if (isRendererCommand(command)) {
+      // capture, sessions and the panels live in the renderer; a hidden window
+      // would swallow the result, so make it visible first
+      showWindow();
+      win?.webContents.send(IPC.trayCommand, { command });
+    }
+  }
+
+  function ensureTray(): void {
+    if (tray.exists) return;
+    tray.create({
+      iconPath: trayIconPath(getResourceRoot()),
+      labels: () => T().tray,
+      state: trayState,
+      onCommand: handleTrayCommand,
+      onClick: toggleWindow,
+      onDoubleClick: showWindow,
+    });
+  }
+
+  /** one-shot balloon the first time the window disappears (spec §A) */
+  function noticeWindowHidden(): void {
+    if (!tray.exists || settings.data.ui.trayNoticeShown) return;
+    settings.applyPatch({ ui: { trayNoticeShown: true } });
+    const t = T();
+    tray.notifyHidden(t.trayNoticeTitle, t.trayNoticeBody);
+    console.log('[tray] hide notice shown once');
+  }
+
+  /**
+   * 开机自动启动. Deliberately inert in development: `setLoginItemSettings`
+   * would register the electron.exe dev launcher (and on Linux Electron does
+   * not implement it at all), so the stored intent is kept and applied by the
+   * installed build instead.
+   */
+  function applyAutoLaunch(enabled: boolean): void {
+    if (process.platform === 'linux') return;
+    if (!app.isPackaged) {
+      console.log(`[autolaunch] ${enabled ? 'on' : 'off'} stored; not applied in a dev build`);
+      return;
+    }
+    try {
+      app.setLoginItemSettings({ openAtLogin: enabled });
+    } catch (e) {
+      console.warn('[autolaunch] could not be applied:', (e as Error).message);
+    }
+  }
+
+  /** the OS is the source of truth; reconcile it with the stored intent once */
+  function syncAutoLaunch(): void {
+    if (process.platform === 'linux' || !app.isPackaged) return;
+    const wanted = !!settings.data.ui.autoLaunch;
+    try {
+      if (app.getLoginItemSettings().openAtLogin !== wanted) applyAutoLaunch(wanted);
+    } catch (e) {
+      console.warn('[autolaunch] could not be read:', (e as Error).message);
+    }
+  }
+
   function registerHotkeys(): void {
     globalShortcut.unregisterAll();
     const toggle = settings.data.ui.hotkeyToggle;
     const shot = settings.data.ui.hotkeyShot;
     try {
       if (toggle) {
-        const ok = globalShortcut.register(toggle, () => {
-          if (!win) return;
-          if (win.isVisible()) win.hide();
-          else {
-            win.show();
-            win.focus();
-          }
-        });
+        const ok = globalShortcut.register(toggle, () => toggleWindow());
         if (!ok) console.warn(`[main] hotkey ${toggle} registration failed (in use?)`);
       }
       if (shot) {
@@ -313,6 +421,20 @@ function bootstrap(): void {
       }
     });
 
+    // the tray menu shows 显示/隐藏窗口, so it has to follow the real state —
+    // whichever of the four hide paths was used (hotkey, 「—」, tray, IPC)
+    // "where did my window go" is THE support question for a frameless,
+    // taskbar-less, content-protected overlay, so both transitions are logged
+    win.on('show', () => {
+      console.log('[window] shown');
+      refreshTray();
+    });
+    win.on('hide', () => {
+      console.log('[window] hidden');
+      refreshTray();
+      noticeWindowHidden();
+    });
+
     win.on('closed', () => {
       win = null;
     });
@@ -322,12 +444,17 @@ function bootstrap(): void {
     } else {
       void win.loadFile(join(__dirname, '../renderer/index.html'));
     }
+
+    // the tray belongs to the running app, not to the first-run wizard: an
+    // unconfigured machine that closes the wizard must still quit (Phase 2)
+    ensureTray();
   }
 
   /** normal boot: warm the ASR worker, bind hotkeys, show the overlay */
   function startMainApp(): void {
     void startAsr();
     registerHotkeys();
+    syncAutoLaunch();
     createWindow();
   }
 
@@ -426,7 +553,6 @@ function bootstrap(): void {
     const PREWARM_IDLE_MS = 4 * 60_000;
     let lastPrefix: string | null = null;
     let lastPrefixActivity = 0; // last time the answer prefix hit the provider
-    let capturing = false;
     let keepWarmTimer: NodeJS.Timeout | null = null;
 
     /** same material fallback as llmAsk — prewarm MUST match real requests byte-for-byte */
@@ -478,6 +604,7 @@ function bootstrap(): void {
       console.log('[main] capture started');
       lastCaptureStartedAt = new Date().toISOString();
       capturing = true;
+      refreshTray(); // 开始转写 -> 停止转写
       if (!keepWarmTimer) {
         keepWarmTimer = setInterval(() => {
           if (!capturing || !lastPrefix) return;
@@ -491,6 +618,7 @@ function bootstrap(): void {
       console.log('[main] capture stopped');
       lastCaptureStoppedAt = new Date().toISOString();
       capturing = false;
+      refreshTray();
       if (keepWarmTimer) {
         clearInterval(keepWarmTimer);
         keepWarmTimer = null;
@@ -509,6 +637,9 @@ function bootstrap(): void {
       if (patch.ui?.stealth !== undefined) {
         win?.setContentProtection(patch.ui.stealth);
       }
+      // the tray menu is a snapshot: rebuild it in the newly chosen language
+      if (patch.ui?.lang !== undefined) refreshTray();
+      if (patch.ui?.autoLaunch !== undefined) applyAutoLaunch(patch.ui.autoLaunch);
       // backend/cloud change => rebuild the ASR worker with the new engine.
       // language alone can hot-update without a restart.
       if (
@@ -1002,10 +1133,18 @@ function bootstrap(): void {
   app.on('before-quit', () => {
     quitting = true;
     globalShortcut.unregisterAll();
+    tray.destroy();
     void asr.stop();
     void sidecar.stop();
   });
 
+  /**
+   * Still a quit, tray or not: hiding the overlay does NOT close it, so this
+   * only fires on a real teardown (app.quit() destroying the windows, or the
+   * first-run wizard being closed before completion). A "close to tray" app
+   * would return here instead — MeetingCopilot deliberately has no window
+   * close button that leaves the app running headless without a window.
+   */
   app.on('window-all-closed', () => {
     app.quit();
   });

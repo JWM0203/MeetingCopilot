@@ -146,6 +146,7 @@ export function SettingsPanel({
     settings.asr.localRealtime.model ?? 'fun-asr-nano',
   );
   const [hotkeyShot, setHotkeyShot] = useState(settings.ui.hotkeyShot);
+  const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
   const [uiLang, setUiLang] = useState<UiLang>(settings.ui.lang);
@@ -301,6 +302,7 @@ export function SettingsPanel({
           fontScale,
           theme,
           lang: uiLang,
+          autoLaunch,
         },
         audio: {
           themDeviceId: themDeviceId || undefined,
@@ -636,6 +638,17 @@ export function SettingsPanel({
           onChange={(e) => setHotkeyShot(e.target.value)}
           spellCheck={false}
         />
+      </div>
+      <div className="settings-row">
+        <label>{t.settings.autoLaunch}</label>
+        <select
+          value={autoLaunch ? 'on' : 'off'}
+          onChange={(e) => setAutoLaunch(e.target.value === 'on')}
+        >
+          <option value="off">{t.settings.autoLaunchOff}</option>
+          <option value="on">{t.settings.autoLaunchOn}</option>
+        </select>
+        <span className="settings-inline-hint">{t.settings.autoLaunchHint}</span>
       </div>
 
       <div className="settings-section">{t.settings.audioSection}</div>
