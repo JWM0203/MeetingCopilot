@@ -13,6 +13,7 @@ import type {
   OnboardingCompletePayload,
   OnboardingProgressPatch,
   OnboardingState,
+  ProviderSlot,
   ProviderVerification,
   PublicSettings,
   SettingsFile,
@@ -339,6 +340,34 @@ export class SettingsStore {
   }
 
   /**
+   * Persist the outcome of a connection test into one provider slot.
+   *
+   * Deliberately NOT routed through {@link applyPatch}: the `settings:set`
+   * handler restarts the ASR engine whenever `asr.cloud` / `asr.realtime` is
+   * present in a patch, so recording "the realtime key tested OK" that way
+   * would bounce a live transcription session every time the user pressed
+   * 重新测试. This writes the one field and saves, nothing else.
+   */
+  recordVerification(slot: ProviderSlot, verification: ProviderVerification): void {
+    const value: ProviderVerification = { ...verification };
+    switch (slot) {
+      case 'llm':
+        this.data.llm.verification = value;
+        break;
+      case 'vision':
+        this.data.vision.verification = value;
+        break;
+      case 'asr-cloud':
+        this.data.asr.cloud = { ...this.data.asr.cloud, verification: value };
+        break;
+      case 'asr-realtime':
+        this.data.asr.realtime = { ...this.data.asr.realtime, verification: value };
+        break;
+    }
+    this.save();
+  }
+
+  /**
    * Encrypt a plaintext key into a slot and derive its display hint main-side.
    * '' clears the slot. A key change invalidates the stored verification
    * unless the very same patch supplied a fresh one.
@@ -451,6 +480,20 @@ export class SettingsStore {
       return this.cipher.decrypt(enc);
     } catch {
       return undefined;
+    }
+  }
+
+  /** the stored key behind one slot — used by 「用已保存的 Key 重新测试」 */
+  getApiKeyForSlot(slot: ProviderSlot): string | undefined {
+    switch (slot) {
+      case 'llm':
+        return this.getLlmApiKey();
+      case 'vision':
+        return this.getVisionApiKey();
+      case 'asr-cloud':
+        return this.getCloudAsrApiKey();
+      case 'asr-realtime':
+        return this.getRealtimeAsrApiKey();
     }
   }
 }

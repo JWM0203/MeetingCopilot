@@ -21,8 +21,10 @@ import {
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
+import { recordDiagnosticError } from './diagnostics';
 import { openExternalUrl } from './externalLinks';
 import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
+import { runProviderTest } from './providerTest';
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
 import { SETUP_READY_MARKER, createSetupWindow } from './setupWindow';
@@ -49,6 +51,8 @@ import {
   type LlmEvent,
   type OnboardingCompletePayload,
   type OnboardingProgressPatch,
+  type ProviderTestRequest,
+  type ProviderTestResult,
   type SettingsPatch,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
@@ -561,6 +565,46 @@ function bootstrap(): void {
         platform: process.platform,
         packaged: app.isPackaged,
       }),
+    );
+
+    // ---- provider connection tests (Phase 3) ----
+    // Runs ONLY on an explicit user action from the wizard or Settings. The
+    // candidate key lives in a local const for the duration of one call: it is
+    // never persisted here, never logged, and never travels back to the
+    // renderer inside the result.
+    ipcMain.handle(
+      IPC.providerTest,
+      async (_e, req: ProviderTestRequest): Promise<ProviderTestResult> => {
+        const { candidateApiKey, ...request } = req ?? ({} as ProviderTestRequest);
+        const apiKey =
+          candidateApiKey?.trim() ||
+          (request.useStoredKey && request.slot
+            ? (settings.getApiKeyForSlot(request.slot) ?? '')
+            : '');
+        const result = await runProviderTest(
+          { ...request, language: request.language ?? settings.data.asr.language },
+          apiKey,
+        );
+        // one dedicated write; applyPatch() would restart the ASR engine
+        if (request.slot) {
+          settings.recordVerification(request.slot, {
+            lastTestAt: new Date().toISOString(),
+            lastTestOk: result.ok,
+            lastTestCode: result.code,
+            latencyMs: result.latencyMs,
+          });
+        }
+        if (!result.ok) {
+          recordDiagnosticError(
+            `provider-test/${request.capability}`,
+            `${result.code} (${request.providerId} ${request.model})`,
+          );
+        }
+        console.log(
+          `[provider-test] ${request.capability} ${request.providerId} -> ${result.code} (${result.latencyMs ?? '?'}ms)`,
+        );
+        return result;
+      },
     );
 
     ipcMain.handle(IPC.knowledgeImport, async () => {

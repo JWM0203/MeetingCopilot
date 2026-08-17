@@ -8,6 +8,8 @@ import {
   type LlmEvent,
   type OnboardingProgressPatch,
   type OnboardingState,
+  type ProviderTestRequest,
+  type ProviderTestResult,
   type PublicSettings,
   type SessionsFile,
   type SettingsPatch,
@@ -66,6 +68,10 @@ export interface McApi {
   /** read the clipboard — call ONLY from an explicit paste-button click */
   readClipboardText(): Promise<string>;
   getAppInfo(): Promise<AppInfo>;
+  /** run ONE real provider connection test; explicit user action only (it
+   * costs the user a minimal billable request). Main maps every failure to a
+   * ProviderTestCode + zh/en message, so nothing raw reaches the UI. */
+  providerTest(req: ProviderTestRequest): Promise<ProviderTestResult>;
   hide(): void;
   quit(): void;
 }
@@ -115,6 +121,7 @@ const api: McApi = {
   openExternal: (url) => ipcRenderer.invoke(IPC.externalOpen, url),
   readClipboardText: () => ipcRenderer.invoke(IPC.clipboardReadText),
   getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
+  providerTest: (req) => ipcRenderer.invoke(IPC.providerTest, req),
   hide: () => ipcRenderer.send(IPC.winHide),
   quit: () => ipcRenderer.send(IPC.appQuit),
 };

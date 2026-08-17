@@ -533,3 +533,97 @@ describe('SettingsStore onboarding + key hints', () => {
     expect(pub.asr.providerId).toBe('aliyun-dashscope-cn');
   });
 });
+
+describe('SettingsStore.recordVerification', () => {
+  const verdict = {
+    lastTestAt: '2026-08-17T10:00:00.000Z',
+    lastTestOk: true,
+    lastTestCode: 'OK' as const,
+    latencyMs: 412,
+  };
+
+  it('writes the verdict into each slot and persists it', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.recordVerification('llm', verdict);
+    s.recordVerification('vision', { ...verdict, lastTestOk: false, lastTestCode: 'TIMEOUT' });
+    s.recordVerification('asr-cloud', { ...verdict, latencyMs: 900 });
+    s.recordVerification('asr-realtime', { ...verdict, latencyMs: 88 });
+
+    const reloaded = new SettingsStore(file, fakeCipher);
+    expect(reloaded.data.llm.verification).toEqual(verdict);
+    expect(reloaded.data.vision.verification?.lastTestCode).toBe('TIMEOUT');
+    expect(reloaded.data.asr.cloud?.verification?.latencyMs).toBe(900);
+    expect(reloaded.data.asr.realtime?.verification?.latencyMs).toBe(88);
+    expect(reloaded.getPublic().asr.realtime.verification?.lastTestOk).toBe(true);
+  });
+
+  // this is the whole reason the method exists: settings:set restarts the ASR
+  // engine whenever asr.cloud / asr.realtime appear in a patch, so a test
+  // result must never travel through applyPatch()
+  it('touches nothing but the one verification field', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      llm: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: 'sk-llm-1111' },
+      asr: {
+        backend: 'cloud-realtime',
+        language: 'chinese',
+        realtime: {
+          baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+          model: 'fun-asr-realtime',
+          apiKey: 'sk-rt-2222',
+        },
+      },
+      ui: { stealth: false },
+    });
+    const before = JSON.parse(JSON.stringify(s.data)) as SettingsFile;
+
+    s.recordVerification('asr-realtime', verdict);
+
+    const after = s.data;
+    expect(after.asr.realtime?.verification).toEqual(verdict);
+    // key, endpoint, model, hint, backend, language and every other section
+    // survive byte-for-byte
+    expect(after.asr.realtime?.apiKeyEnc).toBe(before.asr.realtime?.apiKeyEnc);
+    expect(after.asr.realtime?.apiKeyHint).toBe('2222');
+    expect(after.asr.realtime?.baseUrl).toBe(before.asr.realtime?.baseUrl);
+    expect(after.asr.realtime?.model).toBe(before.asr.realtime?.model);
+    expect(after.asr.backend).toBe('cloud-realtime');
+    expect(after.asr.language).toBe('chinese');
+    expect(after.llm).toEqual(before.llm);
+    expect(after.vision).toEqual(before.vision);
+    expect(after.ui).toEqual(before.ui);
+    expect(after.audio).toEqual(before.audio);
+    expect(after.onboarding).toEqual(before.onboarding);
+    expect(after.asr.cloud).toEqual(before.asr.cloud);
+  });
+
+  it('overwrites an older verdict rather than merging with it', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.recordVerification('llm', verdict);
+    s.recordVerification('llm', {
+      lastTestAt: '2026-08-17T11:00:00.000Z',
+      lastTestOk: false,
+      lastTestCode: 'RATE_LIMITED',
+    });
+    expect(s.data.llm.verification).toEqual({
+      lastTestAt: '2026-08-17T11:00:00.000Z',
+      lastTestOk: false,
+      lastTestCode: 'RATE_LIMITED',
+    });
+    expect(s.data.llm.verification?.latencyMs).toBeUndefined();
+  });
+
+  it('resolves the stored key for each slot', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    s.applyPatch({
+      llm: { apiKey: 'sk-llm-1111' },
+      vision: { apiKey: 'sk-vis-2222' },
+      asr: { cloud: { apiKey: 'sk-seg-3333' }, realtime: { apiKey: 'sk-rt-4444' } },
+    });
+    expect(s.getApiKeyForSlot('llm')).toBe('sk-llm-1111');
+    expect(s.getApiKeyForSlot('vision')).toBe('sk-vis-2222');
+    expect(s.getApiKeyForSlot('asr-cloud')).toBe('sk-seg-3333');
+    expect(s.getApiKeyForSlot('asr-realtime')).toBe('sk-rt-4444');
+    expect(new SettingsStore(join(dir, 'other.json'), fakeCipher).getApiKeyForSlot('llm')).toBeUndefined();
+  });
+});

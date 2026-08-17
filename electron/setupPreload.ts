@@ -20,6 +20,8 @@ import type {
   OnboardingCompletePayload,
   OnboardingProgressPatch,
   OnboardingState,
+  ProviderTestRequest,
+  ProviderTestResult,
   PublicSettings,
   SettingsPatch,
 } from '../shared/protocol';
@@ -39,6 +41,7 @@ const CH = {
   externalOpen: 'app:open-external',
   clipboardReadText: 'app:clipboard-read',
   appGetInfo: 'app:get-info',
+  providerTest: 'provider:test',
 } as const satisfies Pick<
   typeof IPC,
   | 'onboardingGet'
@@ -49,6 +52,7 @@ const CH = {
   | 'externalOpen'
   | 'clipboardReadText'
   | 'appGetInfo'
+  | 'providerTest'
 >;
 
 export interface McSetupApi {
@@ -67,6 +71,9 @@ export interface McSetupApi {
   /** only ever called from an explicit 「从剪贴板粘贴」 click */
   readClipboardText(): Promise<string>;
   getAppInfo(): Promise<AppInfo>;
+  /** 「保存并测试连接」: one real provider round-trip, run only when the user
+   * asks for it. The candidate key goes main-side and stays there. */
+  providerTest(req: ProviderTestRequest): Promise<ProviderTestResult>;
 }
 
 const api: McSetupApi = {
@@ -79,6 +86,7 @@ const api: McSetupApi = {
   openExternal: (url) => ipcRenderer.invoke(CH.externalOpen, url),
   readClipboardText: () => ipcRenderer.invoke(CH.clipboardReadText),
   getAppInfo: () => ipcRenderer.invoke(CH.appGetInfo),
+  providerTest: (req) => ipcRenderer.invoke(CH.providerTest, req),
 };
 
 contextBridge.exposeInMainWorld('mcSetup', api);

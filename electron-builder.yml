@@ -57,6 +57,17 @@ extraResources:
     to: requirements-funasr.txt
   - from: requirements-moss.txt
     to: requirements-moss.txt
+  # Connection-test fixtures (electron/providerTest.ts): a ~1.4 s 16 kHz mono
+  # TTS clip per language and a 64x64 PNG. They carry no user data. The `to`
+  # path mirrors the repo-relative path on purpose -- getResourceRoot() is the
+  # repo root in dev and `resources/` when packaged, so
+  # join(root, 'resources', ...) resolves on both sides with no branch.
+  - from: resources/test-audio
+    to: resources/test-audio
+    filter:
+      - '*.wav'
+  - from: resources/test-image.png
+    to: resources/test-image.png
 
 win:
   icon: build/icon.ico

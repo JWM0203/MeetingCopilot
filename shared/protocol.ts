@@ -4,8 +4,8 @@
  */
 export const PROTOCOL_VERSION = 1;
 
-import type { ProviderId } from './providerCatalog';
-export type { ProviderId } from './providerCatalog';
+import type { ProviderCapability, ProviderId } from './providerCatalog';
+export type { ProviderCapability, ProviderId } from './providerCatalog';
 
 // ---------- Settings ----------
 
@@ -47,6 +47,61 @@ export interface ProviderVerification {
   lastTestOk?: boolean;
   lastTestCode?: ProviderTestCode;
   latencyMs?: number;
+}
+
+/**
+ * Which stored credential/verification slot a test belongs to. Mirrors the
+ * settings layout: `asr.cloud` and `asr.realtime` are separate slots so
+ * switching backends never clobbers the other one's key or test result.
+ */
+export type ProviderSlot = 'llm' | 'vision' | 'asr-cloud' | 'asr-realtime';
+
+/**
+ * renderer -> main: run ONE connection test. Explicit user action only — the
+ * app never tests on startup, and every test costs the user a (minimal) API
+ * call: 1 token, ~1.4 s of audio, or a 64x64 image.
+ */
+export interface ProviderTestRequest {
+  /** catalog preset the user picked, when the choice came from the catalog */
+  presetId?: string;
+  capability: ProviderCapability;
+  providerId: ProviderId;
+  baseUrl: string;
+  model: string;
+  /**
+   * Plaintext key to test BEFORE it is saved. renderer -> main only: it is
+   * never persisted by this call, never logged, and never echoed back.
+   */
+  candidateApiKey?: string;
+  /** test the key already stored in `slot` instead of supplying one */
+  useStoredKey?: boolean;
+  /** where to read the stored key from and where to record the verdict */
+  slot?: ProviderSlot;
+  /** vision only: '127.0.0.1:7897'-style local proxy */
+  proxyUrl?: string;
+  /**
+   * ASR only: which bundled test clip to send and which language hint to pass.
+   * Absent = main fills it in from `asr.language`.
+   */
+  language?: AsrLanguage;
+}
+
+/**
+ * main -> renderer verdict. The messages are built by the unified mapper
+ * (electron/providerErrors.ts), so the renderer never has to interpret a raw
+ * provider error — which is also what keeps keys and Authorization headers out
+ * of the UI.
+ */
+export interface ProviderTestResult {
+  ok: boolean;
+  code: ProviderTestCode;
+  /** round-trip of the test call itself, present on success and on failure */
+  latencyMs?: number;
+  messageZh: string;
+  messageEn: string;
+  /** for the collapsible advanced detail, when the provider volunteered one */
+  providerRequestId?: string;
+  retryable: boolean;
 }
 
 /** the plan the user picked in the first-run wizard */
@@ -503,4 +558,16 @@ export const IPC = {
   clipboardReadText: 'app:clipboard-read',
   /** invoke: () => AppInfo */
   appGetInfo: 'app:get-info',
+  /** invoke: (ProviderTestRequest) => ProviderTestResult — run one real
+   * connection test against a provider. Explicit user action only: never on
+   * startup, never polled, one minimal billable request per call. Main also
+   * records the verdict into the slot's `verification` (a dedicated store
+   * write that deliberately does NOT go through settings:set, which would
+   * restart the ASR engine). */
+  providerTest: 'provider:test',
+  /** invoke: () => string — plaintext, locally built support report. Contains
+   * no keys, no transcripts and no knowledge-base text (electron/diagnostics.ts) */
+  diagnosticsGet: 'diagnostics:get',
+  /** invoke: () => boolean — reveal the userData folder in Explorer/Finder */
+  logsOpenFolder: 'logs:open-folder',
 } as const;

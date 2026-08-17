@@ -119,6 +119,7 @@ class AliyunRtSession implements StreamingSession {
       if (!kind) return;
       if (kind === 'task-started') {
         this.started = true;
+        this.cb.onReady?.();
         for (const b of this.pending) this.ws.send(b);
         this.pending = [];
       } else if (kind === 'result-generated') {
