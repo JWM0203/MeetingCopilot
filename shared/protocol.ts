@@ -79,6 +79,14 @@ export interface OnboardingCompletePayload {
   selectedPlan?: OnboardingPlan;
 }
 
+/** identity of the running build (shown in the wizard footer / about) */
+export interface AppInfo {
+  version: string;
+  platform: NodeJS.Platform;
+  /** false in `npm run dev`, true inside an installed build */
+  packaged: boolean;
+}
+
 export interface SettingsFile {
   version: 2;
   /** first-run wizard state; added in v2 (migrated files are grandfathered) */
@@ -472,4 +480,12 @@ export const IPC = {
   /** invoke: (OnboardingCompletePayload) => OnboardingState — wizard finished:
    * persist completion, close the setup window and hand over to the main app */
   onboardingComplete: 'onboarding:complete',
+  /** invoke: (url) => boolean — open an allowlisted https URL in the OS
+   * browser; the renderer can never navigate or window.open by itself */
+  externalOpen: 'app:open-external',
+  /** invoke: () => string — read the clipboard, ONLY from an explicit
+   * paste-button click (never polled) */
+  clipboardReadText: 'app:clipboard-read',
+  /** invoke: () => AppInfo */
+  appGetInfo: 'app:get-info',
 } as const;

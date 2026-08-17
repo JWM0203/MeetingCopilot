@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC,
+  type AppInfo,
   type AsrEvent,
   type KbSlot,
   type LlmAskPayload,
@@ -57,6 +58,12 @@ export interface McApi {
   memoUpdate(p: { memo: string; question: string; answer: string }): Promise<string>;
   onLlmEvent(cb: (ev: LlmEvent) => void): () => void;
   onShotHotkey(cb: () => void): () => void;
+  /** open an allowlisted https documentation link in the OS browser;
+   * false = refused by the main-process allowlist */
+  openExternal(url: string): Promise<boolean>;
+  /** read the clipboard — call ONLY from an explicit paste-button click */
+  readClipboardText(): Promise<string>;
+  getAppInfo(): Promise<AppInfo>;
   hide(): void;
   quit(): void;
 }
@@ -102,6 +109,9 @@ const api: McApi = {
     ipcRenderer.on(IPC.shotHotkey, listener);
     return () => ipcRenderer.removeListener(IPC.shotHotkey, listener);
   },
+  openExternal: (url) => ipcRenderer.invoke(IPC.externalOpen, url),
+  readClipboardText: () => ipcRenderer.invoke(IPC.clipboardReadText),
+  getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
   hide: () => ipcRenderer.send(IPC.winHide),
   quit: () => ipcRenderer.send(IPC.appQuit),
 };

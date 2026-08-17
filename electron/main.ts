@@ -5,6 +5,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -20,6 +21,7 @@ import {
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
+import { openExternalUrl } from './externalLinks';
 import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
@@ -38,7 +40,7 @@ import {
   buildVisionMessages,
   clampMemo,
 } from './llm/prompts';
-import type { PublicSettings, UiLang } from '../shared/protocol';
+import type { AppInfo, PublicSettings, UiLang } from '../shared/protocol';
 import {
   IPC,
   type AsrEvent,
@@ -400,6 +402,21 @@ function bootstrap(): void {
     );
     ipcMain.handle(IPC.onboardingComplete, (_e, payload: OnboardingCompletePayload = {}) =>
       settings.completeOnboarding(payload ?? {}),
+    );
+
+    // ---- app shell services (wizard + main window) ----
+    // The renderer never navigates: window.open is denied and will-navigate is
+    // prevented, so documentation links come back here to be validated.
+    ipcMain.handle(IPC.externalOpen, (_e, url: unknown) => openExternalUrl(url));
+    // read on an explicit paste-button click only — never polled
+    ipcMain.handle(IPC.clipboardReadText, () => clipboard.readText());
+    ipcMain.handle(
+      IPC.appGetInfo,
+      (): AppInfo => ({
+        version: app.getVersion(),
+        platform: process.platform,
+        packaged: app.isPackaged,
+      }),
     );
 
     ipcMain.handle(IPC.knowledgeImport, async () => {
