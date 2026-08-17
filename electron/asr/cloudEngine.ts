@@ -26,7 +26,7 @@ export class CloudAsrEngine implements AsrEngine {
 
   static async load(cfg: CloudAsrConfig): Promise<CloudAsrEngine> {
     if (!cfg.baseUrl || !cfg.model || !cfg.apiKey) {
-      throw new Error('云端 ASR 未配置（需要 Base URL / 模型 / API Key）');
+      throw new Error('cloud ASR is not configured (needs a base URL, a model and an API key)');
     }
     return new CloudAsrEngine(cfg);
   }

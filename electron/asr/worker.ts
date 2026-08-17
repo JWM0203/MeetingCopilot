@@ -104,11 +104,11 @@ async function handleInit(init: WorkerInit): Promise<void> {
   try {
     language = init.language;
     if (init.backend === 'cloud-realtime') {
-      if (!init.cloud) throw new Error('云端流式 ASR 未配置');
+      if (!init.cloud) throw new Error('cloud streaming ASR is not configured');
       engine = await AliyunRealtimeEngine.load(init.cloud);
       post({ type: 'ready', loadMs: 0, warmMs: 0, ep: 'cloud-rt', gpuSuspect: false });
     } else if (init.backend === 'cloud') {
-      if (!init.cloud) throw new Error('云端 ASR 未配置');
+      if (!init.cloud) throw new Error('cloud ASR is not configured');
       engine = await CloudAsrEngine.load(init.cloud);
       post({ type: 'ready', loadMs: 0, warmMs: 0, ep: 'cloud', gpuSuspect: false });
     } else {

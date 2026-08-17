@@ -1108,6 +1108,13 @@ function bootstrap(): void {
         // only fatal events belong in the support report — a transient
         // per-segment failure would flood the 50-entry buffer
         if (ev.fatal) recordDiagnosticError('asr', ev.message);
+        if (ev.fatal) {
+          // engine diagnostics are deliberately English (they end up in logs
+          // and in the diagnostics report); the sentence AROUND them is the
+          // part the user reads, so it gets localized here
+          win?.webContents.send(IPC.asrEvent, { ...ev, message: T().asrEngineFail(ev.message) });
+          return;
+        }
       } else if (ev.kind === 'status') {
         console.log(`[asr] status=${ev.state} queued=${ev.queuedSegments}`);
       }

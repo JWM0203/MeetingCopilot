@@ -25,6 +25,7 @@ import type {
   ThemeMode,
   UiLang,
 } from '../../shared/protocol';
+import { DOCS, docUrl } from '../../shared/docsLinks';
 import { getSetupDict, type SetupDict } from './i18n';
 import { buildPlanPatch, keyPatchForSlot, mergeKeyPatches, planDefinition, type KeySlot } from '../../shared/onboardingPlans';
 import { WelcomeStep } from './steps/WelcomeStep';
@@ -35,7 +36,6 @@ import { CompleteStep } from './steps/CompleteStep';
 
 const FIRST_STEP = 1;
 const LAST_STEP = 5;
-const HELP_URL = 'https://github.com/JWM0203/MeetingCopilot';
 
 /** dev/QA hook: `?step=4` jumps straight to a step so every screen can be
  * screenshotted (electron/setupWindow.ts sets it from MC_SETUP_STEP). */
@@ -140,9 +140,16 @@ export function OnboardingApp() {
     }
   }, [step, plan]);
 
+  /**
+   * The wizard deliberately does NOT embed the help center: a second copy of
+   * that panel inside a five-step flow is more surface than it is worth, and
+   * the wizard already renders the per-provider tutorial it needs inline. The
+   * 帮助 link therefore opens the same quick-start guide the main window's help
+   * panel links to, in the language the user picked here.
+   */
   const openHelp = useCallback(() => {
-    void window.mcSetup.openExternal(HELP_URL);
-  }, []);
+    void window.mcSetup.openExternal(docUrl(DOCS.quickStart, lang));
+  }, [lang]);
 
   /** one settings patch per card save; a shared key hits two slots at once */
   const saveKey = useCallback(async (slots: KeySlot[], apiKey: string) => {

@@ -831,6 +831,91 @@ body {
   user-select: text;
 }
 
+/* ---------- help center ----------
+ * Same overlay chrome as .settings (it reuses that class), plus collapsible
+ * topics. Everything is local text: no iframe, no remote content. */
+.help-panel {
+  max-height: 66vh;
+  line-height: 1.65;
+}
+
+.help-topic {
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.help-topic > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  list-style: none;
+}
+
+.help-topic > summary::before {
+  content: '▸ ';
+  color: var(--text-muted);
+}
+
+.help-topic[open] > summary::before {
+  content: '▾ ';
+}
+
+.help-topic > summary::-webkit-details-marker {
+  display: none;
+}
+
+.help-body {
+  margin-top: 8px;
+}
+
+.help-lines {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  color: var(--text-body);
+}
+
+.help-lines li {
+  margin-bottom: 5px;
+}
+
+.help-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--section-text);
+  margin: 8px 0 4px;
+}
+
+.help-note {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+.help-provider {
+  border-top: 1px solid var(--border-1);
+  padding-top: 8px;
+  margin-top: 10px;
+}
+
+.help-provider-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 /* ---------- status bar ---------- */
 .statusbar {
   display: flex;

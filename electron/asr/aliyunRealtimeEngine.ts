@@ -214,14 +214,14 @@ export class AliyunRealtimeEngine implements StreamingAsrEngine, AsrEngine {
 
   static async load(cfg: CloudAsrConfig): Promise<AliyunRealtimeEngine> {
     if (!cfg.baseUrl || !cfg.model) {
-      throw new Error('流式 ASR 未配置（需要 ws(s) 地址 / 模型）');
+      throw new Error('streaming ASR is not configured (needs a ws(s) URL and a model)');
     }
     if (!/^wss?:\/\//.test(cfg.baseUrl)) {
-      throw new Error(`流式 ASR 地址必须是 ws:// 或 wss:// 开头（当前: ${cfg.baseUrl}）`);
+      throw new Error(`streaming ASR URL must start with ws:// or wss:// (got: ${cfg.baseUrl})`);
     }
     // remote (wss) requires a key; the local ws:// sidecar does not
     if (/^wss:\/\//.test(cfg.baseUrl) && !cfg.apiKey) {
-      throw new Error('云端流式 ASR 需要 API Key');
+      throw new Error('cloud streaming ASR requires an API key');
     }
     return new AliyunRealtimeEngine(cfg);
   }

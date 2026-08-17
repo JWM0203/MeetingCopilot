@@ -79,7 +79,7 @@ export async function resolvePython(
     if (await probe(candidate)) return candidate;
   }
   throw new Error(
-    `未找到可用 Python（已尝试 ${candidates.join(', ')}）；请创建 .venv 或设置 MC_FUNASR_PYTHON`,
+    `no usable Python found (tried ${candidates.join(', ')}); create a .venv or set MC_FUNASR_PYTHON`,
   );
 }
 
@@ -165,7 +165,7 @@ export class FunasrSidecar {
     );
     const script = join(appRoot, 'tools', isMoss ? 'moss_asr_server.py' : 'funasr_stream_server.py');
     if (!existsSync(script)) {
-      throw new Error(`未找到 ${script}`);
+      throw new Error(`sidecar script not found: ${script}`);
     }
     console.log(
       `[sidecar] spawning local ASR model=${modelArg} on :${port} (first load can take several minutes)`,
@@ -195,7 +195,11 @@ export class FunasrSidecar {
       const timer = setTimeout(() => {
         settle(() => {
           void this.stop().finally(() =>
-            reject(new Error('本地 ASR 引擎 15 分钟内未就绪（请检查模型下载和 Python 日志）')),
+            reject(
+              new Error(
+                'the local ASR engine was not ready within 15 minutes (check the model download and the python log)',
+              ),
+            ),
           );
         });
       }, READY_TIMEOUT_MS);
@@ -209,7 +213,9 @@ export class FunasrSidecar {
         this.proc = null;
         this.modelArg = null;
         const envName = isMoss ? 'moss-asr' : 'funasr';
-        settle(() => reject(new Error(`本地 ASR 引擎退出（code ${code}）——检查 conda env "${envName}"`)));
+        settle(() =>
+          reject(new Error(`the local ASR engine exited (code ${code}); check the conda env "${envName}"`)),
+        );
       });
       proc.on('error', (e) => settle(() => reject(e)));
     });

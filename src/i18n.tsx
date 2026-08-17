@@ -169,6 +169,122 @@ const zh = {
     hintNeedsSetup: '尚未配置任何云服务。打开配置向导可以一步步完成设置。',
     answersDisabled: '尚未配置 AI 回答服务：请在设置或配置向导中添加 API Key。',
   },
+  help: {
+    title: '帮助与教程',
+    intro: '全部内容都在本机，不需要联网即可阅读；带链接的按钮会用系统浏览器打开官方页面。',
+    close: '关闭',
+    fullGuide: '查看完整教程',
+    openPage: '打开官方页面',
+    openKeyPage: '打开 Key 页面',
+    openDocs: '打开官方文档',
+    steps: '开通步骤',
+    faq: '常见问题',
+    billing: '费用说明',
+    openSettings: '打开设置',
+    openDiagnostics: '打开诊断信息',
+    openIssues: '前往 GitHub Issues',
+    openRepo: '打开项目主页',
+    openReleases: '打开下载页',
+    providerNames: {
+      deepseek: 'DeepSeek（推荐用于 AI 回答）',
+      'aliyun-dashscope-cn': '阿里云百炼 · 中国大陆站（推荐用于实时转写）',
+      mimo: 'MiMo · 小米（一个 Key 兼顾转写与回答，Beta）',
+      gemini: 'Google Gemini（可选，用于截图问答）',
+    },
+    version: (v: string, platform: string) => `版本 ${v} · ${platform}`,
+    devBuild: '开发模式（未打包）',
+    installedBuild: '安装版',
+    topics: {
+      quickStart: {
+        title: '1. 快速开始（三步）',
+        lines: [
+          '第一步：在设置或配置向导里填入 API Key —— 转写和 AI 回答各需要一个，同一个服务商的 Key 可以复用。',
+          '第二步：让电脑放一段有人说话的声音（视频、会议、播客都行），点标题栏的「▶ 开始」，左栏应当出现文字。',
+          '第三步：在左栏任意一句上点「⚡答」，右栏就会生成可以直接照着念的回答；打开「持续答」则由 AI 自动接话。',
+          '想让回答贴合你的经历，先在右栏点「📄简历」「📋JD」导入资料（支持 .md/.txt/.docx/.pdf，全部本地解析）。',
+        ],
+      },
+      apiKey: {
+        title: '2. API Key 是什么',
+        lines: [
+          'API Key 是你在大模型服务商那边创建的一串凭证，用来证明「这些请求是我发的」，不是你的账号密码。',
+          'MeetingCopilot 自带 Key（BYOK）：Key 由你自己创建、费用由服务商向你收取，本应用不代收任何费用、也没有账号系统。',
+          'Key 使用系统凭据服务（Windows DPAPI / macOS 钥匙串）加密后保存在本机，界面上只会显示后 4 位。',
+          '请勿把 Key 贴进聊天记录或截图外传；一旦泄露，去服务商控制台删除并重新创建即可。',
+        ],
+      },
+      providers: {
+        title: '3. 各服务商 Key 领取教程',
+        lines: [
+          '下面的步骤与配置向导里显示的完全一致，可以照着一步步做。',
+        ],
+      },
+      noSound: {
+        title: '4. 没有声音 / 左栏不出字',
+        lines: [
+          '先确认对方那侧真的在出声：电脑正在播放视频或会议，并且音量不是静音。',
+          'Windows 采集的是系统回环声音（对方的声音从你的扬声器/耳机出来），因此播放设备必须是当前正在发声的那个设备。',
+          '若某个应用独占了音频设备（部分录音软件、独占模式的播放器），请关闭它再点一次「▶ 开始」。',
+          'macOS 没有系统回环，需要先安装 BlackHole 之类的虚拟音频设备，并在设置里把「对方音频输入」选成它。',
+          '状态栏左下角会显示引擎状态；如果一直停在「模型加载中…」，请打开「服务状态」查看是哪一项没连上。',
+        ],
+      },
+      keyErrors: {
+        title: '5. 提示 Key 无效 / 余额不足 / 权限不足',
+        lines: [
+          'API Key 无效：多为复制不完整或已在控制台删除，重新创建一个再粘贴即可（保存时会自动去掉空格、引号和 Bearer 前缀）。',
+          '余额不足：Key 本身有效，去服务商控制台充值后重试。',
+          '权限不足：阿里云百炼常见于未开通服务、未实名认证，或当前不在主账号的默认业务空间。',
+          '模型不存在：确认模型名，或把服务商预设改回推荐项；阿里云国际站账号与中国大陆站的接入地址不同。',
+          '每个 Key 输入框旁都有「测试连接」，它只发一次极小的请求，用来分辨到底是 Key、网络还是账号的问题。',
+        ],
+      },
+      localAsr: {
+        title: '6. 本地转写引擎启动失败',
+        lines: [
+          '这只影响「本地侧车 ASR」后端，云端方案完全不受影响，可以在设置里把转录后端改成「云端流式」继续使用。',
+          '本地后端需要你自己准备 Python 环境（FunASR / MOSS），安装包不会替你安装 Python 和模型权重。',
+          '模型首次运行需要联网下载（约 0.9–1.7 GB），下载期间界面会一直显示加载中，属于正常现象。',
+          '安装好环境后仍然失败，请打开「诊断信息」查看最后几条错误，再对照下面的完整教程排查。',
+        ],
+      },
+      windowsSecurity: {
+        title: '7. Windows 提示「不安全」怎么办',
+        lines: [
+          '当前是未做代码签名的 Beta 版本，Windows SmartScreen 会提示「已保护你的电脑」，这是未签名应用的通用提醒。',
+          '确认文件来自本项目的 GitHub Releases 页面后，点「更多信息」→「仍要运行」即可。',
+          '建议核对下载文件的 SHA256 与 Release 说明中公布的值是否一致，再运行。',
+          '代码签名会在后续版本中处理；在那之前请只从官方发布页下载安装包。',
+        ],
+      },
+      macosAudio: {
+        title: '8. macOS 音频配置',
+        lines: [
+          'macOS 无法像 Windows 那样直接采集系统声音，需要一个虚拟音频设备把会议声音「引」进来。',
+          '常用做法是安装 BlackHole，并用「聚集设备 / 多输出设备」同时把声音送到耳机和 BlackHole。',
+          '之后在设置的「对方音频输入」里选择 BlackHole，再点「▶ 开始」。',
+          '另外，macOS 新版本的屏幕采集接口仍可能录到本窗口，隐身功能只能尽力而为。',
+        ],
+      },
+      feedback: {
+        title: '9. 如何反馈问题',
+        lines: [
+          '先点下面的「打开诊断信息」并复制报告：它在本机生成，不含 API Key、简历和转写内容。',
+          '到 GitHub Issues 新建一条，贴上诊断信息，并说明你做了什么、期望什么、实际发生了什么。',
+          '如果和某个服务商有关，请附上「测试连接」显示的错误代码（例如 INVALID_KEY、REGION_MISMATCH）。',
+        ],
+      },
+      about: {
+        title: '10. 关于 MeetingCopilot',
+        lines: [
+          '本地优先的会议 / 面试助手：转写与回答分别连接你自己配置的服务商，没有账号、没有服务器、没有遥测。',
+          '设置、会话、简历等数据保存在本机的用户数据目录，卸载默认不会删除。',
+          '以 Apache License 2.0 开源，可自由使用、修改和再分发。',
+          '本工具面向个人学习与辅助用途，能否在会议 / 面试中使用请自行确认所在地法律与对方规则。',
+        ],
+      },
+    },
+  },
   diagnostics: {
     title: '诊断信息',
     intro: '报告在本地生成，不包含 API Key、简历、转写等敏感内容。',
@@ -253,6 +369,7 @@ const zh = {
     deviceDefault: '系统默认',
     rerunWizard: '重新运行配置向导',
     rerunWizardHint: '重新打开配置向导；主窗口会保持运行。',
+    helpHint: '常见问题、各服务商 Key 教程与排查步骤，全部在本机离线可读。',
     textSection: '文本大模型（回答/翻译）',
     baseUrl: 'Base URL',
     model: '模型（DeepSeek 用 deepseek-chat；MiMo 用 mimo-v2.5-pro）',
@@ -477,6 +594,121 @@ const en: Dict = {
     answersDisabled:
       'AI answers are not configured yet — add an API key in Settings or the setup wizard.',
   },
+  help: {
+    title: 'Help & guides',
+    intro:
+      'Everything here is local — no network needed to read it. Buttons with a link open the official page in your browser.',
+    close: 'Close',
+    fullGuide: 'Read the full guide',
+    openPage: 'Open the official page',
+    openKeyPage: 'Open the key page',
+    openDocs: 'Open the official docs',
+    steps: 'Steps',
+    faq: 'Common problems',
+    billing: 'Billing',
+    openSettings: 'Open settings',
+    openDiagnostics: 'Open diagnostics',
+    openIssues: 'Go to GitHub Issues',
+    openRepo: 'Open the project page',
+    openReleases: 'Open the download page',
+    providerNames: {
+      deepseek: 'DeepSeek (recommended for AI answers)',
+      'aliyun-dashscope-cn': 'Alibaba Cloud Model Studio · mainland (recommended for live ASR)',
+      mimo: 'MiMo · Xiaomi (one key for both ASR and answers, Beta)',
+      gemini: 'Google Gemini (optional, for screenshot Q&A)',
+    },
+    version: (v: string, platform: string) => `Version ${v} · ${platform}`,
+    devBuild: 'development build (not packaged)',
+    installedBuild: 'installed build',
+    topics: {
+      quickStart: {
+        title: '1. Quick start (three steps)',
+        lines: [
+          'Step 1: add your API keys in Settings or the setup wizard — one for transcription, one for AI answers; a key from the same provider can serve both.',
+          'Step 2: play something with speech in it (a video, a meeting, a podcast), click "▶ Start" in the title bar, and text should appear in the left pane.',
+          'Step 3: click "⚡Ans" on any line to get an answer you can read aloud, or turn on "Auto" and let the AI reply to questions by itself.',
+          'For answers grounded in your own experience, import your resume and the job description with "📄Resume" / "📋JD" (.md/.txt/.docx/.pdf, parsed locally).',
+        ],
+      },
+      apiKey: {
+        title: '2. What an API key is',
+        lines: [
+          'An API key is a credential you create in a model provider console. It proves the requests are yours — it is not your account password.',
+          'MeetingCopilot is bring-your-own-key: you create the key, the provider bills you, and this app collects no fee and has no accounts.',
+          'Keys are encrypted with the OS credential store (Windows DPAPI / macOS Keychain) and stored on your machine; the UI only ever shows the last 4 characters.',
+          'Never paste a key into a chat or a screenshot. If one leaks, delete it in the provider console and create a new one.',
+        ],
+      },
+      providers: {
+        title: '3. Getting a key, per provider',
+        lines: ['These are the same steps the setup wizard shows — follow them one by one.'],
+      },
+      noSound: {
+        title: '4. No sound / nothing appears in the left pane',
+        lines: [
+          'First make sure the other side really is making noise: a video or meeting is playing and the volume is not muted.',
+          'Windows captures system loopback audio (what comes out of your speakers or headphones), so the playback device must be the one currently making sound.',
+          'If an app holds the audio device exclusively (some recorders, exclusive-mode players), close it and press "▶ Start" again.',
+          'macOS has no system loopback: install a virtual device such as BlackHole and select it as the other-party audio input in Settings.',
+          'The status bar shows the engine state; if it stays on "Loading model…", open Service status to see which service never connected.',
+        ],
+      },
+      keyErrors: {
+        title: '5. Invalid key / insufficient balance / permission denied',
+        lines: [
+          'Invalid key: usually an incomplete copy or a key deleted in the console. Create a new one and paste it (saving strips spaces, quotes and a Bearer prefix for you).',
+          'Insufficient balance: the key is fine — top up in the provider console and retry.',
+          'Permission denied: on Alibaba Cloud this usually means the service is not activated, real-name verification is missing, or you are not in the main account default workspace.',
+          'Model not found: check the model id or switch back to a recommended preset. International Alibaba Cloud accounts use a different endpoint from mainland ones.',
+          'Every key field has a "Test connection" button. It sends one tiny request and tells you whether the key, the network or the account is the problem.',
+        ],
+      },
+      localAsr: {
+        title: '6. The local transcription engine fails to start',
+        lines: [
+          'This only affects the local sidecar ASR backend. Cloud transcription is unaffected — switch the backend to cloud streaming in Settings and keep working.',
+          'The local backend needs a Python environment you provide (FunASR / MOSS); the installer ships neither Python nor the model weights.',
+          'On its first run the model is downloaded (roughly 0.9–1.7 GB), and the UI stays on "loading" for the whole download. That is expected.',
+          'If it still fails with the environment in place, open Diagnostics for the last errors and follow the full setup guide below.',
+        ],
+      },
+      windowsSecurity: {
+        title: '7. Windows says the app is unsafe',
+        lines: [
+          'This beta is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC" — the standard warning for unsigned apps.',
+          'Once you have confirmed the file came from this project\'s GitHub Releases page, click "More info" → "Run anyway".',
+          'Check the SHA256 of the downloaded file against the value published in the release notes before running it.',
+          'Code signing is planned for a later release. Until then, only download installers from the official release page.',
+        ],
+      },
+      macosAudio: {
+        title: '8. macOS audio setup',
+        lines: [
+          'macOS cannot capture system audio the way Windows does; a virtual audio device has to route the meeting sound into the app.',
+          'The usual setup is BlackHole plus an Aggregate / Multi-Output device, so the sound reaches both your headphones and BlackHole.',
+          'Then pick BlackHole as the other-party audio input in Settings and press "▶ Start".',
+          'Note that recent macOS screen-capture APIs may still record this window: stealth is best-effort there.',
+        ],
+      },
+      feedback: {
+        title: '9. Reporting a problem',
+        lines: [
+          'Click "Open diagnostics" below and copy the report: it is built locally and contains no API keys, resume text or transcripts.',
+          'Open a GitHub issue, paste the report, and describe what you did, what you expected and what happened instead.',
+          'If a provider is involved, include the error code shown by "Test connection" (e.g. INVALID_KEY, REGION_MISMATCH).',
+        ],
+      },
+      about: {
+        title: '10. About MeetingCopilot',
+        lines: [
+          'A local-first meeting and interview copilot: transcription and answers each talk to the provider you configured. No accounts, no server, no telemetry.',
+          'Settings, sessions and imported material live in the per-user data folder on this machine and survive an uninstall by default.',
+          'Open source under the Apache License 2.0 — free to use, modify and redistribute.',
+          'Intended for personal learning and assistive use; whether you may use it in a meeting or interview is up to your local law and the other party.',
+        ],
+      },
+    },
+  },
   diagnostics: {
     title: 'Diagnostics',
     intro:
@@ -563,6 +795,7 @@ const en: Dict = {
     deviceDefault: 'System default',
     rerunWizard: 'Run the setup wizard again',
     rerunWizardHint: 'Reopens the setup wizard; the main window keeps running.',
+    helpHint: 'Common problems, per-provider key guides and fixes — all readable offline.',
     textSection: 'Text LLM (answers / translation)',
     baseUrl: 'Base URL',
     model: 'Model (DeepSeek: deepseek-chat; MiMo: mimo-v2.5-pro)',

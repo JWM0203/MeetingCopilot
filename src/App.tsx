@@ -23,6 +23,7 @@ import { TranscriptPanel } from './components/TranscriptPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ServiceHealthPanel } from './components/ServiceHealthPanel';
 import { DiagnosticsPanel } from './components/DiagnosticsPanel';
+import { HelpPanel } from './components/HelpPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
@@ -42,9 +43,6 @@ export interface HudStats {
   p95?: number;
   count: number;
 }
-
-/** tray 「帮助与教程」 until the in-app help center lands (Phase 4 §B) */
-const HELP_URL = 'https://github.com/JWM0203/MeetingCopilot';
 
 const MAX_TURNS = 200;
 // v2: only the last 8 turns ride along verbatim — the rolling memo carries
@@ -79,6 +77,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHealth, setShowHealth] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [hud, setHud] = useState<HudStats>({ count: 0 });
   const [continuous, setContinuous] = useState(false);
@@ -360,9 +359,10 @@ export function App() {
     const offShot = window.mc.onShotHotkey(() => void doRegionShot());
 
     window.__mcAutoStart = () => void startCapture();
-    // visual-QA hook (MC_MAIN_SHOT in electron/main.ts): open the settings
-    // panel from the main process so it can be screenshotted
+    // visual-QA hooks (MC_MAIN_SHOT in electron/main.ts): open a panel from the
+    // main process so it can be screenshotted
     window.__mcOpenSettings = () => setShowSettings(true);
+    window.__mcOpenHelp = () => setShowHelp(true);
     return () => {
       off();
       offLlm();
@@ -600,6 +600,14 @@ export function App() {
     [patchSession],
   );
 
+  /** the overlays are mutually exclusive: one panel at a time, never stacked */
+  const closePanels = useCallback(() => {
+    setShowSettings(false);
+    setShowHealth(false);
+    setShowDiagnostics(false);
+    setShowHelp(false);
+  }, []);
+
   /**
    * Tray menu -> renderer (Phase 4 §A). Main only forwards what it cannot do
    * itself, and it has already made the window visible. 开始/停止转写
@@ -618,21 +626,20 @@ export function App() {
           createSession();
           return;
         case 'open-settings':
-          setShowHealth(false);
-          setShowDiagnostics(false);
+          closePanels();
           setShowSettings(true);
           return;
         case 'open-health':
-          setShowSettings(false);
-          setShowDiagnostics(false);
+          closePanels();
           setShowHealth(true);
           return;
         case 'open-help':
-          void window.mc.openExternal(HELP_URL);
+          closePanels();
+          setShowHelp(true);
           return;
       }
     });
-  }, [capturing, asr.phase, startCapture, stopCapture, createSession]);
+  }, [capturing, asr.phase, startCapture, stopCapture, createSession, closePanels]);
 
   const pickKb = useCallback(
     async (slot: KbSlot) => {
@@ -844,6 +851,20 @@ export function App() {
 
       {showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 
+      {showHelp && (
+        <HelpPanel
+          onClose={() => setShowHelp(false)}
+          onOpenSettings={() => {
+            setShowHelp(false);
+            setShowSettings(true);
+          }}
+          onOpenDiagnostics={() => {
+            setShowHelp(false);
+            setShowDiagnostics(true);
+          }}
+        />
+      )}
+
       {showSettings && settings && (
         <SettingsPanel
           settings={settings}
@@ -860,6 +881,10 @@ export function App() {
           onOpenDiagnostics={() => {
             setShowSettings(false);
             setShowDiagnostics(true);
+          }}
+          onOpenHelp={() => {
+            setShowSettings(false);
+            setShowHelp(true);
           }}
         />
       )}

@@ -119,6 +119,7 @@ export function SettingsPanel({
   onClose,
   onRerunWizard,
   onOpenDiagnostics,
+  onOpenHelp,
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
@@ -127,6 +128,8 @@ export function SettingsPanel({
   onRerunWizard?: () => void;
   /** 高级 entry into the local support report */
   onOpenDiagnostics?: () => void;
+  /** in-app help center (also reachable from the tray) */
+  onOpenHelp?: () => void;
 }) {
   const t = useT();
   const [baseUrl, setBaseUrl] = useState(settings.llm.baseUrl);
@@ -665,6 +668,15 @@ export function SettingsPanel({
         </select>
       </div>
       <div className="settings-hint">{t.settings.otherHint}</div>
+
+      {onOpenHelp && (
+        <div className="settings-row">
+          <button className="btn" onClick={onOpenHelp}>
+            {t.help.title}
+          </button>
+          <span className="settings-inline-hint">{t.settings.helpHint}</span>
+        </div>
+      )}
 
       {onRerunWizard && (
         <div className="settings-row">

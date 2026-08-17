@@ -16,6 +16,8 @@ const zh = {
   noApiKeyShort: '未设置 API Key',
   noVision: '未配置视觉模型：请在设置里填 Vision Base URL / 模型 / Key（如 MiMo / Gemini）',
   sidecarFail: (msg: string) => `本地 ASR 引擎启动失败：${msg}`,
+  /** wraps the ASR worker's own (English, log-friendly) engine diagnostics */
+  asrEngineFail: (msg: string) => `语音识别引擎异常：${msg}`,
   setupQuitTitle: '尚未完成配置',
   setupQuitMessage: '配置尚未完成，确定退出吗？可稍后从设置中重新打开向导。',
   setupQuitConfirm: '退出',
@@ -50,6 +52,7 @@ const en: MainDict = {
   noApiKeyShort: 'API Key not set',
   noVision: 'Vision model not configured: set the Vision Base URL / model / key in Settings (e.g. MiMo / Gemini)',
   sidecarFail: (msg: string) => `Local ASR engine failed to start: ${msg}`,
+  asrEngineFail: (msg: string) => `Speech recognition engine error: ${msg}`,
   setupQuitTitle: 'Setup is not finished',
   setupQuitMessage:
     'Setup is not finished. Quit anyway? You can reopen the wizard later from Settings.',
