@@ -7,6 +7,12 @@
  * If something already listens on the port (sidecar started manually or left
  * over), it is reused and never killed by us — we only reap processes we
  * spawned.
+ *
+ * `appRoot` throughout this file is the *resource root* (see
+ * electron/resourcePaths.ts): the repo root in development, `resources/` in a
+ * packaged build. It must always be a real directory — it is both the script
+ * lookup base (`<appRoot>/tools/*.py`) and the spawn cwd, and python can do
+ * neither inside app.asar.
  */
 import { spawn, execFile, type ChildProcess } from 'child_process';
 import { connect } from 'net';
@@ -26,6 +32,9 @@ export function pythonCandidates(
   // join per the REQUESTED platform, not the host — keeps the function (and
   // its tests) deterministic when asked about a foreign platform
   const j = platform === 'win32' ? win32.join : posix.join;
+  // dev-only convenience: a packaged build has no <resources>/.venv, and that
+  // is fine — resolvePython() only probes, so a missing path just fails over
+  // to the next candidate instead of throwing
   const venv =
     platform === 'win32'
       ? j(appRoot, '.venv', 'Scripts', 'python.exe')

@@ -21,6 +21,7 @@ import {
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
 import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
+import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
@@ -144,7 +145,9 @@ function bootstrap(): void {
     const port = opts.backend === 'cloud-realtime' ? parseLocalWsPort(opts.cloud?.baseUrl) : null;
     if (port) {
       try {
-        await sidecar.ensureRunning(port, app.getAppPath(), opts.cloud?.model);
+        // NOT app.getAppPath(): packaged that resolves inside app.asar, which
+        // python cannot read and the OS cannot use as a spawn cwd
+        await sidecar.ensureRunning(port, getResourceRoot(), opts.cloud?.model);
         console.log(`[sidecar] local ASR ready on :${port}`);
       } catch (e) {
         const message = T().sidecarFail((e as Error).message);
