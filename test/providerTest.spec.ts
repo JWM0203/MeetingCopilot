@@ -5,10 +5,13 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws';
 import {
+  resolveTestApiKey,
   runProviderTest,
   runSingleKeyPlanTest,
+  withoutCandidateKey,
   type ProviderTestDeps,
 } from '../electron/providerTest';
+import type { ProviderSlot } from '../shared/protocol';
 import { chatOnce } from '../electron/llm/adapter';
 import { AliyunRealtimeEngine } from '../electron/asr/aliyunRealtimeEngine';
 import { CloudAsrEngine } from '../electron/asr/cloudEngine';
@@ -33,6 +36,76 @@ function deps(over: Partial<ProviderTestDeps> = {}): ProviderTestDeps {
     ...over,
   };
 }
+
+// ------------------------------------------------------------ key handling
+
+describe('resolveTestApiKey', () => {
+  const stored: Partial<Record<ProviderSlot, string>> = {
+    llm: 'sk-stored-llm',
+    'asr-realtime': 'sk-stored-rt',
+  };
+  const lookup = (slot: ProviderSlot) => stored[slot];
+
+  const base: ProviderTestRequest = {
+    capability: 'text-llm',
+    providerId: 'deepseek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+    slot: 'llm',
+  };
+
+  it('prefers the key the user just typed over the saved one', () => {
+    expect(
+      resolveTestApiKey({ ...base, candidateApiKey: 'sk-typed', useStoredKey: true }, lookup),
+    ).toBe('sk-typed');
+  });
+
+  it('trims a pasted key (clipboards add whitespace)', () => {
+    expect(resolveTestApiKey({ ...base, candidateApiKey: '  sk-typed\n' }, lookup)).toBe('sk-typed');
+  });
+
+  it('falls back to the stored key only when explicitly asked, and only for the named slot', () => {
+    expect(resolveTestApiKey({ ...base, useStoredKey: true }, lookup)).toBe('sk-stored-llm');
+    expect(
+      resolveTestApiKey({ ...base, slot: 'asr-realtime', useStoredKey: true }, lookup),
+    ).toBe('sk-stored-rt');
+    // an empty slot stays empty rather than borrowing another slot's key
+    expect(resolveTestApiKey({ ...base, slot: 'vision', useStoredKey: true }, lookup)).toBe('');
+  });
+
+  it('never guesses: no candidate and no explicit request means no key', () => {
+    expect(resolveTestApiKey(base, lookup)).toBe('');
+    expect(resolveTestApiKey({ ...base, candidateApiKey: '   ' }, lookup)).toBe('');
+    expect(resolveTestApiKey({ ...base, slot: undefined, useStoredKey: true }, lookup)).toBe('');
+  });
+
+  it('withoutCandidateKey strips the plaintext and keeps everything else', () => {
+    const req: ProviderTestRequest = {
+      ...base,
+      presetId: 'deepseek.text.fast',
+      candidateApiKey: 'sk-typed-secret',
+      useStoredKey: false,
+      proxyUrl: '127.0.0.1:7897',
+      language: 'chinese',
+    };
+    const stripped = withoutCandidateKey(req);
+    expect(stripped).not.toHaveProperty('candidateApiKey');
+    expect(JSON.stringify(stripped)).not.toContain('sk-typed-secret');
+    expect(stripped).toMatchObject({
+      presetId: 'deepseek.text.fast',
+      capability: 'text-llm',
+      providerId: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+      slot: 'llm',
+      useStoredKey: false,
+      proxyUrl: '127.0.0.1:7897',
+      language: 'chinese',
+    });
+    // the caller's object is left alone
+    expect(req.candidateApiKey).toBe('sk-typed-secret');
+  });
+});
 
 // ---------------------------------------------------------------- HTTP mock
 

@@ -21,7 +21,12 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import type { AsrLanguage, ProviderTestRequest, ProviderTestResult } from '../shared/protocol';
+import type {
+  AsrLanguage,
+  ProviderSlot,
+  ProviderTestRequest,
+  ProviderTestResult,
+} from '../shared/protocol';
 import type { ProviderCapability } from '../shared/providerCatalog';
 import { chatOnce, type ChatMessage, type LlmConfig } from './llm/adapter';
 import type { VisionConfig } from './llm/vision';
@@ -109,6 +114,40 @@ export const defaultProviderTestDeps: ProviderTestDeps = {
   timeoutMs: PROVIDER_TEST_TIMEOUT_MS,
   now: () => Date.now(),
 };
+
+// ---------- key resolution ----------
+
+/**
+ * Which key this test runs with.
+ *
+ * A freshly typed candidate ALWAYS wins: the user pressed 保存并测试连接 to find
+ * out whether that key works, and falling back to the stored one would show
+ * them a green tick for a key they are about to replace.
+ *
+ * Without a candidate, a key is used only when the caller explicitly asked for
+ * the stored one AND named the slot. There is deliberately no "guess the slot"
+ * path: sending the LLM key to a realtime ASR endpoint would burn a request
+ * and produce a misleading INVALID_KEY.
+ */
+export function resolveTestApiKey(
+  req: ProviderTestRequest,
+  storedKeyForSlot: (slot: ProviderSlot) => string | undefined,
+): string {
+  const candidate = req.candidateApiKey?.trim();
+  if (candidate) return candidate;
+  if (req.useStoredKey && req.slot) return storedKeyForSlot(req.slot)?.trim() ?? '';
+  return '';
+}
+
+/**
+ * Drop the plaintext candidate before the request travels any further. The key
+ * then exists only as the separate `apiKey` argument of {@link runProviderTest}
+ * — it cannot be logged with the request, stored with it, or returned in it.
+ */
+export function withoutCandidateKey(req: ProviderTestRequest): ProviderTestRequest {
+  const { candidateApiKey: _dropped, ...rest } = req;
+  return rest;
+}
 
 // ---------- helpers ----------
 

@@ -31,7 +31,7 @@ import {
 } from './diagnostics';
 import { openExternalUrl } from './externalLinks';
 import { FunasrSidecar, parseLocalWsPort, pythonCandidates, resolvePython } from './funasrSidecar';
-import { runProviderTest } from './providerTest';
+import { resolveTestApiKey, runProviderTest, withoutCandidateKey } from './providerTest';
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
 import { SETUP_READY_MARKER, createSetupWindow } from './setupWindow';
@@ -588,13 +588,12 @@ function bootstrap(): void {
     // renderer inside the result.
     ipcMain.handle(
       IPC.providerTest,
-      async (_e, req: ProviderTestRequest): Promise<ProviderTestResult> => {
-        const { candidateApiKey, ...request } = req ?? ({} as ProviderTestRequest);
-        const apiKey =
-          candidateApiKey?.trim() ||
-          (request.useStoredKey && request.slot
-            ? (settings.getApiKeyForSlot(request.slot) ?? '')
-            : '');
+      async (_e, incoming: ProviderTestRequest): Promise<ProviderTestResult> => {
+        const req = incoming ?? ({} as ProviderTestRequest);
+        const apiKey = resolveTestApiKey(req, (slot) => settings.getApiKeyForSlot(slot));
+        // the plaintext candidate stops here: everything downstream sees a
+        // request without it, and the key only as a separate argument
+        const request = withoutCandidateKey(req);
         const result = await runProviderTest(
           { ...request, language: request.language ?? settings.data.asr.language },
           apiKey,
