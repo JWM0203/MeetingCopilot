@@ -30,10 +30,10 @@ Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 
 把输出与 `.sha256` 文件里的值比对，一致再运行。
 
-<!-- 发布时把 CI 产出的两行哈希粘到这里：
-MeetingCopilot-0.2.0-beta.1-win-x64.exe            <sha256>
-MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe   <sha256>
--->
+```text
+94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingCopilot-0.2.0-beta.1-win-x64.exe
+05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe
+```
 
 ### 首次使用四步
 
@@ -91,10 +91,10 @@ Get-FileHash .\MeetingCopilot-0.2.0-beta.1-win-x64.exe -Algorithm SHA256
 
 Compare it with the value in the `.sha256` file before running the installer.
 
-<!-- On publish, paste the two CI-produced hashes here:
-MeetingCopilot-0.2.0-beta.1-win-x64.exe            <sha256>
-MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe   <sha256>
--->
+```text
+94bc35b9cfade1ef8ada3280f3be25db5a4fb84bb5cf5c3ea9a478bca2b4e8e2  MeetingCopilot-0.2.0-beta.1-win-x64.exe
+05b78dd6aa8ecf485110d0ea55794096f463daeb61578e9ede19477cb94add17  MeetingCopilot-0.2.0-beta.1-win-x64-portable.exe
+```
 
 ### First run, in four steps
 
