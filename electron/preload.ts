@@ -72,6 +72,11 @@ export interface McApi {
    * costs the user a minimal billable request). Main maps every failure to a
    * ProviderTestCode + zh/en message, so nothing raw reaches the UI. */
   providerTest(req: ProviderTestRequest): Promise<ProviderTestResult>;
+  /** plaintext support report, built locally on request. Contains no keys, no
+   * transcripts and no knowledge-base text — safe to paste into an issue. */
+  getDiagnostics(): Promise<string>;
+  /** reveal %APPDATA%/MeetingCopilot (settings, sessions, knowledge) */
+  openLogsFolder(): Promise<boolean>;
   hide(): void;
   quit(): void;
 }
@@ -122,6 +127,8 @@ const api: McApi = {
   readClipboardText: () => ipcRenderer.invoke(IPC.clipboardReadText),
   getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo),
   providerTest: (req) => ipcRenderer.invoke(IPC.providerTest, req),
+  getDiagnostics: () => ipcRenderer.invoke(IPC.diagnosticsGet),
+  openLogsFolder: () => ipcRenderer.invoke(IPC.logsOpenFolder),
   hide: () => ipcRenderer.send(IPC.winHide),
   quit: () => ipcRenderer.send(IPC.appQuit),
 };

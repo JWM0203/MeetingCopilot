@@ -13,17 +13,24 @@ import {
   safeStorage,
   screen,
   session,
+  shell,
 } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { release } from 'os';
 import { join } from 'path';
 import {
   captureKindForPlatform,
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
-import { recordDiagnosticError } from './diagnostics';
+import {
+  LocalPythonProbe,
+  buildDiagnosticsReport,
+  recentDiagnosticErrors,
+  recordDiagnosticError,
+} from './diagnostics';
 import { openExternalUrl } from './externalLinks';
-import { FunasrSidecar, parseLocalWsPort } from './funasrSidecar';
+import { FunasrSidecar, parseLocalWsPort, pythonCandidates, resolvePython } from './funasrSidecar';
 import { runProviderTest } from './providerTest';
 import { getResourceRoot } from './resourcePaths';
 import { SettingsStore, plainCipher, type SecretCipher } from './settings';
@@ -170,6 +177,7 @@ function bootstrap(): void {
       } catch (e) {
         const message = T().sidecarFail((e as Error).message);
         console.error(`[sidecar] ${message}`);
+        recordDiagnosticError('sidecar', (e as Error).message);
         win?.webContents.send(IPC.asrEvent, { kind: 'error', message, fatal: true });
         return;
       }
@@ -462,8 +470,13 @@ function bootstrap(): void {
       },
     );
 
+    // last-known capture lifecycle, for the diagnostics report only
+    let lastCaptureStartedAt: string | undefined;
+    let lastCaptureStoppedAt: string | undefined;
+
     ipcMain.on(IPC.captureStarted, () => {
       console.log('[main] capture started');
+      lastCaptureStartedAt = new Date().toISOString();
       capturing = true;
       if (!keepWarmTimer) {
         keepWarmTimer = setInterval(() => {
@@ -476,6 +489,7 @@ function bootstrap(): void {
     });
     ipcMain.on(IPC.captureStopped, () => {
       console.log('[main] capture stopped');
+      lastCaptureStoppedAt = new Date().toISOString();
       capturing = false;
       if (keepWarmTimer) {
         clearInterval(keepWarmTimer);
@@ -606,6 +620,55 @@ function bootstrap(): void {
         return result;
       },
     );
+
+    // ---- local diagnostics (Phase 3) ----
+    // Purely local: built on request, returned to the renderer for the user to
+    // copy. Nothing is uploaded, nothing is written to disk, and the builder
+    // never receives a key, a transcript or any knowledge-base text.
+    const pythonProbe = new LocalPythonProbe(() =>
+      resolvePython(pythonCandidates(getResourceRoot())),
+    );
+
+    ipcMain.handle(IPC.diagnosticsGet, (): string => {
+      pythonProbe.start(); // background; 'unknown' until it settles
+      const ready = asr.lastReady?.kind === 'ready' ? asr.lastReady : null;
+      const status = asr.lastStatus?.kind === 'status' ? asr.lastStatus : null;
+      return buildDiagnosticsReport({
+        appVersion: app.getVersion(),
+        packaged: app.isPackaged,
+        platform: process.platform,
+        arch: process.arch,
+        osRelease: release(),
+        electronVersion: process.versions.electron,
+        nodeVersion: process.versions.node,
+        uiLang: osLang,
+        settings: settings.data,
+        weakCrypto: settings.getPublic().weakCrypto,
+        knowledgeChars: knowledge.chars,
+        capture: {
+          active: capturing,
+          lastStartedAt: lastCaptureStartedAt,
+          lastStoppedAt: lastCaptureStoppedAt,
+        },
+        asr: {
+          ready: !!ready,
+          ep: ready?.ep,
+          gpuSuspect: ready?.gpuSuspect,
+          state: status?.state,
+        },
+        localPython: pythonProbe.status,
+        errors: recentDiagnosticErrors(),
+        generatedAt: new Date(),
+      });
+    });
+
+    ipcMain.handle(IPC.logsOpenFolder, async (): Promise<boolean> => {
+      // userData holds settings.json, sessions.json and knowledge.md -- the
+      // exact folder a user needs when asked to check or wipe their data
+      const err = await shell.openPath(app.getPath('userData'));
+      if (err) console.warn('[diagnostics] could not open the data folder:', err);
+      return err === '';
+    });
 
     ipcMain.handle(IPC.knowledgeImport, async () => {
       const r = await dialog.showOpenDialog({
@@ -912,6 +975,9 @@ function bootstrap(): void {
         }
       } else if (ev.kind === 'error') {
         console.error(`[asr] error (fatal=${ev.fatal}): ${ev.message}`);
+        // only fatal events belong in the support report — a transient
+        // per-segment failure would flood the 50-entry buffer
+        if (ev.fatal) recordDiagnosticError('asr', ev.message);
       } else if (ev.kind === 'status') {
         console.log(`[asr] status=${ev.state} queued=${ev.queuedSegments}`);
       }
