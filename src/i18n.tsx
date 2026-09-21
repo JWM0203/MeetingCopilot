@@ -114,6 +114,25 @@ const zh = {
     freePlaceholder: '随便问：基于当前对话向 AI 提问…',
     ask: '问',
     shotTitle: '截图框选问视觉模型（拉框选区域，输入框内容作为问题）',
+    scope: {
+      title: '本会话使用哪些知识库资料',
+      toolbarOff: '资料库关',
+      toolbarAll: '资料库全选',
+      toolbarSelected: (count: number) => `资料库 ${count}`,
+      toolbarTitle: '设置本会话的知识库范围',
+      modes: {
+        disabled: '关闭',
+        all: '整个资料库',
+        selected: '指定资料',
+      },
+      search: '搜索文件或路径',
+      noMatches: '没有匹配的文件',
+      unavailable: '本地知识库尚未开启或索引不可用，请先在设置中完成索引。',
+      save: '保存范围',
+      cancel: '取消',
+    },
+    references: '参考资料',
+    relevance: '相关度',
   },
   status: {
     state: {
@@ -570,6 +589,25 @@ const en: Dict = {
     freePlaceholder: 'Ask anything about the current conversation…',
     ask: 'Ask',
     shotTitle: 'Screenshot a region and ask the vision model (input text becomes the question)',
+    scope: {
+      title: 'Knowledge used for this session',
+      toolbarOff: 'Library off',
+      toolbarAll: 'Library all',
+      toolbarSelected: (count: number) => `Library ${count}`,
+      toolbarTitle: 'Set the knowledge scope for this session',
+      modes: {
+        disabled: 'Off',
+        all: 'Entire library',
+        selected: 'Selected items',
+      },
+      search: 'Search files or paths',
+      noMatches: 'No matching files',
+      unavailable: 'The local knowledge base is disabled or its index is unavailable. Build it in Settings first.',
+      save: 'Save scope',
+      cancel: 'Cancel',
+    },
+    references: 'References',
+    relevance: 'Relevance',
   },
   status: {
     state: {

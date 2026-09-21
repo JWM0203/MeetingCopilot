@@ -117,6 +117,7 @@ function publicSlot(
 export function SettingsPanel({
   settings,
   onSaved,
+  onSettingsChanged,
   onClose,
   onRerunWizard,
   onOpenDiagnostics,
@@ -124,6 +125,8 @@ export function SettingsPanel({
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
+  /** immediate sub-settings update that must not close the draft panel */
+  onSettingsChanged?: (s: PublicSettings) => void;
   onClose: () => void;
   /** opens the first-run wizard again (main window stays alive) */
   onRerunWizard?: () => void;
@@ -659,7 +662,7 @@ export function SettingsPanel({
         settings={settings.rag}
         onSettingsChange={(next) => {
           setLive(next);
-          onSaved(next);
+          onSettingsChanged?.(next);
         }}
       />
 

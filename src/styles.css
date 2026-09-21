@@ -579,6 +579,67 @@ body {
   color: var(--text-body);
 }
 
+.turn-sources {
+  margin-top: 7px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 6px;
+}
+
+.turn-sources > summary {
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent-text);
+  font-size: 10px;
+  user-select: none;
+}
+
+.turn-sources > summary::before { content: '▸ '; }
+.turn-sources[open] > summary::before { content: '▾ '; }
+.turn-sources > summary::-webkit-details-marker { display: none; }
+
+.turn-source-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.turn-source {
+  padding-left: 8px;
+  border-left: 2px solid var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.turn-source-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.turn-source-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-body);
+  font-weight: 600;
+}
+
+.turn-source code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.turn-source p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
 .answer-error {
   color: var(--error-text);
 }
@@ -617,6 +678,104 @@ body {
 .answer-input input:focus {
   border-color: var(--accent);
 }
+
+/* ---------- per-session knowledge scope ---------- */
+.scope-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.scope-dialog {
+  width: min(460px, 100%);
+  max-height: min(580px, calc(100vh - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--popup-border);
+  border-radius: 8px;
+  background: var(--popup-bg);
+  box-shadow: 0 14px 40px var(--popup-shadow);
+  color: var(--text-body);
+}
+
+.scope-dialog-head,
+.scope-dialog-actions,
+.scope-modes,
+.scope-tree-row {
+  display: flex;
+  align-items: center;
+}
+
+.scope-dialog-head {
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.scope-modes,
+.scope-dialog-actions {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scope-search {
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.scope-search:focus { border-color: var(--accent); }
+
+.scope-tree {
+  min-height: 180px;
+  max-height: 330px;
+  overflow: auto;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.scope-tree-row {
+  min-height: 27px;
+  gap: 6px;
+  padding-right: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.scope-tree-row:hover {
+  background: var(--surface);
+  color: var(--text-body);
+}
+
+.scope-tree-row input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.scope-tree-row span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-dialog-actions { justify-content: flex-end; }
 
 /* ---------- settings ---------- */
 .settings {

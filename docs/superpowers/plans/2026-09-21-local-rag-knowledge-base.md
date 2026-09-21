@@ -809,7 +809,7 @@ git commit -m "feat: add local knowledge base settings"
 - Consumes: Task 4 document metadata and session `ragScope`; Task 6 stored answer sources.
 - Produces: searchable selection, stable normalized scope, and collapsed source display.
 
-- [ ] **Step 1: Write failing scope normalization tests**
+- [x] **Step 1: Write failing scope normalization tests**
 
 Export a pure helper from the new component:
 
@@ -823,13 +823,13 @@ export function normalizeRagScopeSelection(
 
 Tests require slash normalization, case-insensitive Windows duplicates when a platform argument is `win32`, parent-folder dominance over descendants, stable sort, and removal of paths outside the indexed metadata set.
 
-- [ ] **Step 2: Run scope tests and verify failure**
+- [x] **Step 2: Run scope tests and verify failure**
 
 Run: `npx vitest run test/ragScope.spec.ts`
 
 Expected: FAIL because the helper does not exist.
 
-- [ ] **Step 3: Implement the searchable scope dialog**
+- [x] **Step 3: Implement the searchable scope dialog**
 
 Props are:
 
@@ -845,19 +845,19 @@ interface KnowledgeScopeDialogProps {
 
 Offer exactly three modes: disabled, entire library, selected folders/files. Build a root-relative folder tree, filter it by filename/path search, and persist only normalized root-relative selections. Never put the absolute library root in session JSON.
 
-- [ ] **Step 4: Integrate the toolbar control and session persistence**
+- [x] **Step 4: Integrate the toolbar control and session persistence**
 
 Add a knowledge-library button next to resume/JD. It indicates disabled, all, or selected count without changing the dimensions of existing toolbar controls. `App` updates only the current session's `ragScope`; new sessions use `{ enabled: false }`.
 
-- [ ] **Step 5: Render collapsed references on completed answers**
+- [x] **Step 5: Render collapsed references on completed answers**
 
 When `turn.sources?.length` is nonzero, render one collapsed References button. On expansion show source name, relative path, score rounded to two decimals, and the capped excerpt. References are never rendered inside `.turn-body`, copied answer text, or streaming content.
 
-- [ ] **Step 6: Add Chinese/English scope and reference copy**
+- [x] **Step 6: Add Chinese/English scope and reference copy**
 
 Include disabled, full library, selected items, search placeholder, no matches, save/cancel, references, relevance, and unavailable-index text.
 
-- [ ] **Step 7: Run scope and renderer verification**
+- [x] **Step 7: Run scope and renderer verification**
 
 Run:
 
@@ -869,7 +869,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit Task 8**
+- [x] **Step 8: Commit Task 8**
 
 ```bash
 git add src/components/KnowledgeScopeDialog.tsx src/components/AnswerSession.tsx src/App.tsx src/i18n.tsx src/styles.css test/ragScope.spec.ts

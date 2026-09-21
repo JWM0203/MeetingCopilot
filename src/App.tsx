@@ -53,7 +53,14 @@ let seq = 0;
 const uid = (p: string) => `${p}-${++seq}-${Date.now()}`;
 
 function newSession(name: string): StoredSession {
-  return { id: uid('s'), name, createdAt: Date.now(), turns: [], segments: [] };
+  return {
+    id: uid('s'),
+    name,
+    createdAt: Date.now(),
+    turns: [],
+    segments: [],
+    ragScope: { enabled: false },
+  };
 }
 
 /** legacy single-slot KB → resume slot (dual-slot material, P0-2) */
@@ -889,6 +896,7 @@ export function App() {
             answerLangRef.current = s.llm.answerLang;
             setShowSettings(false);
           }}
+          onSettingsChanged={setSettings}
           onClose={() => setShowSettings(false)}
           onRerunWizard={() => {
             setShowSettings(false);
@@ -923,6 +931,8 @@ export function App() {
           resumeChars={current?.resumeText?.length ?? 0}
           jdName={current?.jdName}
           jdChars={current?.jdText?.length ?? 0}
+          ragAvailable={!!settings?.rag.enabled}
+          ragScope={current?.ragScope ?? { enabled: false }}
           notice={kbNotice}
           visionReady={visionReady}
           answersReady={answersReady}
@@ -933,6 +943,9 @@ export function App() {
           onRename={renameSession}
           onPickKb={(slot) => void pickKb(slot)}
           onClearKb={clearKb}
+          onRagScopeChange={(ragScope) =>
+            patchSession(currentIdRef.current, (session) => ({ ...session, ragScope }))
+          }
           onCancel={cancelTurn}
           onClear={() => patchSession(currentIdRef.current, (s) => ({ ...s, turns: [] }))}
           onFreeAsk={(q) => askLlm('free', q)}

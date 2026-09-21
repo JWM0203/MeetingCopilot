@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { KbSlot, StoredSession } from '../../shared/protocol';
+import type { KbSlot, RagDocumentStatus, RagScope, RagSourceRef, StoredSession } from '../../shared/protocol';
 import { useT } from '../i18n';
+import { KnowledgeScopeDialog } from './KnowledgeScopeDialog';
 
 export type TurnKind = 'segment' | 'continuous' | 'free' | 'translate' | 'vision';
 
@@ -11,6 +12,7 @@ export interface AnswerTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  sources?: RagSourceRef[];
 }
 
 /**
@@ -27,6 +29,8 @@ export function AnswerSession({
   resumeChars,
   jdName,
   jdChars,
+  ragAvailable,
+  ragScope,
   notice,
   visionReady,
   answersReady,
@@ -37,6 +41,7 @@ export function AnswerSession({
   onRename,
   onPickKb,
   onClearKb,
+  onRagScopeChange,
   onCancel,
   onClear,
   onFreeAsk,
@@ -49,6 +54,8 @@ export function AnswerSession({
   resumeChars: number;
   jdName?: string;
   jdChars: number;
+  ragAvailable: boolean;
+  ragScope: RagScope;
   /** transient parse warning (e.g. scanned PDF with no text layer) */
   notice?: string | null;
   visionReady: boolean;
@@ -61,6 +68,7 @@ export function AnswerSession({
   onRename: (id: string, name: string) => void;
   onPickKb: (slot: KbSlot) => void;
   onClearKb: (slot: KbSlot) => void;
+  onRagScopeChange: (scope: RagScope) => void;
   onCancel: (id: string) => void;
   onClear: () => void;
   onFreeAsk: (question: string) => void;
@@ -72,6 +80,8 @@ export function AnswerSession({
   const inputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [ragDocuments, setRagDocuments] = useState<RagDocumentStatus[]>([]);
   const currentName = sessions.find((s) => s.id === currentId)?.name ?? '';
 
   useEffect(() => {
@@ -89,6 +99,18 @@ export function AnswerSession({
     if (!q) return;
     onFreeAsk(q);
     if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const scopeLabel = !ragScope.enabled
+    ? t.answer.scope.toolbarOff
+    : ragScope.includePaths?.length
+      ? t.answer.scope.toolbarSelected(ragScope.includePaths.length)
+      : t.answer.scope.toolbarAll;
+
+  const openScope = () => {
+    setScopeOpen(true);
+    setRagDocuments([]);
+    void window.mc.getRagDocuments().then(setRagDocuments).catch(() => setRagDocuments([]));
   };
 
   return (
@@ -171,6 +193,13 @@ export function AnswerSession({
             ×
           </button>
         )}
+        <button
+          className={ragScope.enabled ? 'btn btn-sm btn-on' : 'btn btn-sm'}
+          onClick={openScope}
+          title={ragAvailable ? t.answer.scope.toolbarTitle : t.answer.scope.unavailable}
+        >
+          ▤ {scopeLabel}
+        </button>
         <span className="session-spacer" />
         <button className="btn btn-sm" onClick={onClear} title={t.answer.clearTitle}>
           {t.answer.clear}
@@ -215,6 +244,23 @@ export function AnswerSession({
                   </>
                 )}
               </div>
+              {turn.status === 'done' && turn.sources?.length ? (
+                <details className="turn-sources">
+                  <summary>{t.answer.references}</summary>
+                  <div className="turn-source-list">
+                    {turn.sources.map((source) => (
+                      <div className="turn-source" key={source.chunkId}>
+                        <div className="turn-source-head">
+                          <strong>{source.name}</strong>
+                          <span>{t.answer.relevance}: {source.score.toFixed(2)}</span>
+                        </div>
+                        <code>{source.relativePath}</code>
+                        {source.excerpt && <p>{source.excerpt}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           ))
         )}
@@ -253,6 +299,13 @@ export function AnswerSession({
           </button>
         )}
       </div>
+      <KnowledgeScopeDialog
+        open={scopeOpen}
+        documents={ragDocuments}
+        value={ragScope}
+        onChange={onRagScopeChange}
+        onClose={() => setScopeOpen(false)}
+      />
     </section>
   );
 }

@@ -441,12 +441,22 @@ function bootstrap(): void {
             );
             await wait(1200);
             await shoot('main-settings-common');
+            await win?.webContents.executeJavaScript(
+              `(()=>{const el=document.querySelector('.rag-settings');el?.scrollIntoView({block:'start'});return !!el;})()`,
+            );
+            await wait(300);
+            await shoot('main-settings-rag');
             // expand 高级 and scroll to it, so the collapsed half is reviewable too
             await win?.webContents.executeJavaScript(
               `(()=>{const p=document.querySelector('.settings');if(!p)return 0;p.querySelectorAll('details').forEach(d=>d.open=true);p.scrollTop=p.scrollHeight;return p.scrollHeight;})()`,
             );
             await wait(600);
             await shoot('main-settings-advanced');
+            await win?.webContents.executeJavaScript(
+              `(()=>{const settings=document.querySelector('.settings');const cancel=settings?.querySelector('.settings-actions .btn:last-child');if(cancel instanceof HTMLElement)cancel.click();const scope=[...document.querySelectorAll('.session-bar button')].find(b=>b.textContent?.includes('资料库')||b.textContent?.includes('Library'));if(scope instanceof HTMLElement)scope.click();return !!scope;})()`,
+            );
+            await wait(500);
+            await shoot('main-rag-scope');
           } catch (e) {
             console.warn('[main] screenshot failed:', (e as Error).message);
           }
