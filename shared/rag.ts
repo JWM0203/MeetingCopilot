@@ -56,3 +56,42 @@ export interface RagProgress {
   total: number;
   currentPath?: string;
 }
+
+export type RagPhase =
+  | 'disabled'
+  | 'downloading'
+  | 'loading'
+  | 'scanning'
+  | 'parsing'
+  | 'embedding'
+  | 'ready'
+  | 'error'
+  | 'unavailable';
+
+export interface RagStatus {
+  phase: RagPhase;
+  enabled: boolean;
+  fileCount: number;
+  chunkCount: number;
+  failedCount: number;
+  processed?: number;
+  total?: number;
+  currentPath?: string;
+  lastUpdatedAt?: string;
+  errorCode?: string;
+  message?: string;
+  modelProgress?: number;
+}
+
+export interface RagQueryInput {
+  query: string;
+  scope: RagScope;
+  limit?: number;
+}
+
+export interface RagQueryResult {
+  context: string;
+  sources: RagSourceRef[];
+  durationMs: number;
+  fallback?: 'timeout' | 'lexical' | 'unavailable' | 'error';
+}

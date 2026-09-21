@@ -26,6 +26,7 @@
     "harness": "node tools/asr-harness.mjs",
     "smoke:llm": "vite-node tools/llm-smoke.ts",
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
+    "smoke:rag-model": "node tools/rag-model-smoke.mjs",
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
     "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
     "smoke:packaged": "node tools/packaged-smoke.mjs"

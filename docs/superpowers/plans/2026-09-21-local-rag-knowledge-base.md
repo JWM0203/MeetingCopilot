@@ -347,7 +347,7 @@ git commit -m "feat: add incremental RAG document index"
 - Consumes: Task 2 `RagIndexer`, `EmbeddingProvider`, and `IndexSnapshot`; Task 1 retrieval functions.
 - Produces: `RagHost.start()`, `scan()`, `rebuild()`, `query()`, `cancel()`, `stop()`, status events, and the compiled `ragWorker.js` entry.
 
-- [ ] **Step 1: Define and test the worker protocol**
+- [x] **Step 1: Define and test the worker protocol**
 
 Use discriminated unions with a required request ID for commands that reply:
 
@@ -368,13 +368,13 @@ export type RagWorkerOut =
 
 Test exhaustive narrowing and a runtime `isRagWorkerOut()` guard against malformed utility-process messages.
 
-- [ ] **Step 2: Run contract tests and verify failure**
+- [x] **Step 2: Run contract tests and verify failure**
 
 Run: `npx vitest run test/ragContract.spec.ts`
 
 Expected: FAIL because the contract module does not exist.
 
-- [ ] **Step 3: Implement the pinned local embedder**
+- [x] **Step 3: Implement the pinned local embedder**
 
 Use a dynamic import so native runtime packaging follows the existing ASR pattern. Configure cache and local model directories before loading:
 
@@ -389,11 +389,11 @@ export class LocalE5Embedder implements EmbeddingProvider {
 
 Call feature extraction with mean pooling, normalization, and quantized ONNX weights. Prefix passage strings with `passage: ` and query strings with `query: `. Validate every returned vector is finite and exactly 384 dimensions.
 
-- [ ] **Step 4: Implement the worker loop**
+- [x] **Step 4: Implement the worker loop**
 
 Adapt the existing ASR utility-port pattern. Keep one model and one committed `IndexSnapshot` resident. Track `AbortController` per request. A query must run lexical retrieval immediately, run query embedding/dense search concurrently, and return lexical-only results when dense search is cancelled or late.
 
-- [ ] **Step 5: Implement `RagHost` request correlation and deadlines**
+- [x] **Step 5: Implement `RagHost` request correlation and deadlines**
 
 Export:
 
@@ -410,7 +410,7 @@ export class RagHost {
 
 `query()` races the worker response against `RAG_QUERY_TIMEOUT_MS`, cancels a timed-out request, and returns `{ chunks: [], sources: [], durationMs, fallback: 'timeout' }` rather than throwing. Worker exit changes status to unavailable and rejects only pending administrative calls; answer queries return an empty fallback.
 
-- [ ] **Step 6: Add the worker build entry and smoke command**
+- [x] **Step 6: Add the worker build entry and smoke command**
 
 Add `ragWorker: resolve(__dirname, 'electron/rag/worker.ts')` beside `asrWorker` in `electron.vite.config.ts`. Add:
 
@@ -420,7 +420,7 @@ Add `ragWorker: resolve(__dirname, 'electron/rag/worker.ts')` beside `asrWorker`
 
 The smoke script imports the compiled embedder, embeds one Chinese and one English query, verifies two finite 384-dimensional vectors, prints load/embed milliseconds, and exits nonzero on failure. Gate network/model execution with `MC_RAG_MODEL_SMOKE=1`; without it print the exact opt-in command and exit zero.
 
-- [ ] **Step 7: Run contract, build, and opt-out smoke checks**
+- [x] **Step 7: Run contract, build, and opt-out smoke checks**
 
 Run:
 
@@ -432,7 +432,7 @@ npm run smoke:rag-model
 
 Expected: PASS; build emits `out/main/ragWorker.js`; smoke reports that `MC_RAG_MODEL_SMOKE=1` is required and exits zero without downloading.
 
-- [ ] **Step 8: Commit Task 3**
+- [x] **Step 8: Commit Task 3**
 
 ```bash
 git add electron/rag/contract.ts electron/rag/embedder.ts electron/rag/worker.ts electron/ragHost.ts test/ragContract.spec.ts tools/rag-model-smoke.mjs electron.vite.config.ts package.json
