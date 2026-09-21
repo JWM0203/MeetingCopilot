@@ -53,7 +53,7 @@
 - Produces: `RagChunk`, `RagSourceRef`, `RagScope`, `RetrievedChunk`, `chunkDocument()`, `chunkHash()`, `lexicalSearch()`, `denseSearch()`, `fuseAndPack()`.
 - Consumes: Node `crypto`; no Electron APIs and no model runtime.
 
-- [ ] **Step 1: Define shared immutable RAG types and constants**
+- [x] **Step 1: Define shared immutable RAG types and constants**
 
 Add exact exported contracts to `shared/rag.ts`:
 
@@ -95,7 +95,7 @@ export interface RetrievedChunk {
 }
 ```
 
-- [ ] **Step 2: Write failing deterministic chunking tests**
+- [x] **Step 2: Write failing deterministic chunking tests**
 
 Add tests that require heading-aware chunks, bounded overlap, stable hashes, and no empty chunks:
 
@@ -114,13 +114,13 @@ it('hashes equal normalized content identically', () => {
 });
 ```
 
-- [ ] **Step 3: Run chunking tests and verify failure**
+- [x] **Step 3: Run chunking tests and verify failure**
 
 Run: `npx vitest run test/ragChunker.spec.ts`
 
 Expected: FAIL because `electron/rag/chunker.ts` does not exist.
 
-- [ ] **Step 4: Implement deterministic chunking**
+- [x] **Step 4: Implement deterministic chunking**
 
 Implement paragraph/heading segmentation, split oversized paragraphs on sentence boundaries, add at most the configured overlap from the previous chunk, normalize CRLF/trailing whitespace, and derive `id` as `${documentId}:${ordinal}:${hash.slice(0, 12)}`. Keep the exported signature exact:
 
@@ -135,7 +135,7 @@ export function chunkDocument(
 export function chunkHash(text: string): string;
 ```
 
-- [ ] **Step 5: Write failing hybrid retrieval tests**
+- [x] **Step 5: Write failing hybrid retrieval tests**
 
 Cover Chinese n-grams, technical identifiers, dense ranking, scope filtering, duplicate suppression, per-document cap, and character budget:
 
@@ -159,13 +159,13 @@ it('limits results to selected paths', () => {
 });
 ```
 
-- [ ] **Step 6: Run retrieval tests and verify failure**
+- [x] **Step 6: Run retrieval tests and verify failure**
 
 Run: `npx vitest run test/ragRetrieval.spec.ts`
 
 Expected: FAIL because the retrieval exports do not exist.
 
-- [ ] **Step 7: Implement pure retrieval functions**
+- [x] **Step 7: Implement pure retrieval functions**
 
 Use normalized Latin tokens plus overlapping CJK bigrams, pre-normalized dense dot products, reciprocal-rank fusion with `k=60`, a maximum of two chunks per document, duplicate rejection at Jaccard similarity `>= 0.85`, and a formatted context block. Export exact signatures:
 
@@ -181,13 +181,13 @@ export function fuseAndPack(input: {
 }): { results: RetrievedChunk[]; context: string };
 ```
 
-- [ ] **Step 8: Run the pure RAG tests**
+- [x] **Step 8: Run the pure RAG tests**
 
 Run: `npx vitest run test/ragChunker.spec.ts test/ragRetrieval.spec.ts`
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit Task 1**
+- [x] **Step 9: Commit Task 1**
 
 ```bash
 git add shared/rag.ts electron/rag/chunker.ts electron/rag/retrieval.ts test/ragChunker.spec.ts test/ragRetrieval.spec.ts
