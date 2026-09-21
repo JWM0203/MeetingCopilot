@@ -8,6 +8,7 @@ models/
 *.log
 .vite/
 *.tsbuildinfo
+.worktrees/
 
 # local npm registry mirror config (China-specific; see README for setup tips)
 .npmrc
