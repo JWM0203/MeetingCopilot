@@ -455,7 +455,7 @@ git commit -m "feat: run local RAG embeddings in a utility process"
 - Consumes: Task 1 shared RAG types and Task 3 status/query types.
 - Produces: persisted global RAG config, per-session `ragScope`, answer `sources`, and renderer-safe RAG methods.
 
-- [ ] **Step 1: Write failing default and migration tests**
+- [x] **Step 1: Write failing default and migration tests**
 
 Add assertions that fresh and existing settings remain disabled and preserve unknown fields:
 
@@ -474,13 +474,13 @@ it('loads a pre-RAG v2 file without enabling or rewriting RAG', () => {
 
 Add a session round-trip test where an old session has no `ragScope` and a new session retains selected root-relative paths and source references.
 
-- [ ] **Step 2: Run compatibility tests and verify failure**
+- [x] **Step 2: Run compatibility tests and verify failure**
 
 Run: `npx vitest run test/settings.spec.ts test/sessions.spec.ts`
 
 Expected: FAIL because the RAG fields do not exist.
 
-- [ ] **Step 3: Extend schemas without bumping the settings file version**
+- [x] **Step 3: Extend schemas without bumping the settings file version**
 
 Add optional-compatible fields:
 
@@ -500,7 +500,7 @@ sources?: RagSourceRef[];
 
 Merge `rag` with `{ enabled: false }` in `mergeWithDefaults`. Keep `version: 2`; this is an additive field with safe defaults and does not require rewriting user files.
 
-- [ ] **Step 4: Add IPC channels and preload methods**
+- [x] **Step 4: Add IPC channels and preload methods**
 
 Add exact channels:
 
@@ -525,7 +525,7 @@ onRagStatus(cb: (status: RagStatus) => void): () => void;
 
 Do not expose raw vectors, index paths, document bodies, or worker commands.
 
-- [ ] **Step 5: Run compatibility and type checks**
+- [x] **Step 5: Run compatibility and type checks**
 
 Run:
 
@@ -536,7 +536,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```bash
 git add shared/rag.ts shared/protocol.ts electron/settings.ts electron/preload.ts test/settings.spec.ts test/sessions.spec.ts

@@ -93,6 +93,7 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     audio: {
       micEnabled: false,
     },
+    rag: { enabled: false },
   };
 }
 
@@ -121,6 +122,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
     },
     ui: { ...defaults.ui, ...raw.ui },
     audio: { ...defaults.audio, ...raw.audio },
+    rag: { ...defaults.rag, ...raw.rag },
   };
 }
 
@@ -339,6 +341,7 @@ export class SettingsStore {
     }
     if (patch.ui) Object.assign(this.data.ui, stripUndefined(patch.ui));
     if (patch.audio) Object.assign(this.data.audio, stripUndefined(patch.audio));
+    if (patch.rag) Object.assign(this.data.rag, stripUndefined(patch.rag));
     this.save();
   }
 
@@ -452,6 +455,7 @@ export class SettingsStore {
         micEnabled: d.audio.micEnabled,
         micDeviceId: d.audio.micDeviceId,
       },
+      rag: { ...d.rag },
     };
   }
 

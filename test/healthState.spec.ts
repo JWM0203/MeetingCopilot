@@ -58,6 +58,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
     },
     audio: { micEnabled: false },
     ...over,
+    rag: over.rag ?? { enabled: false },
   };
 }
 

@@ -32,6 +32,32 @@ afterEach(() => {
 });
 
 describe('SettingsStore', () => {
+  it('defaults local RAG to disabled without a root', () => {
+    expect(defaultSettings('win32').rag).toEqual({ enabled: false });
+    expect(new SettingsStore(file, fakeCipher).getPublic().rag).toEqual({ enabled: false });
+  });
+
+  it('loads a pre-RAG v2 file without enabling RAG or rewriting it', () => {
+    const legacy = defaultSettings();
+    delete (legacy as Partial<SettingsFile>).rag;
+    writeFileSync(file, JSON.stringify(legacy), 'utf8');
+    const before = readFileSync(file, 'utf8');
+
+    const store = new SettingsStore(file, fakeCipher);
+
+    expect(store.data.rag).toEqual({ enabled: false });
+    expect(store.getPublic().rag).toEqual({ enabled: false });
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('round-trips a RAG root and enabled state without changing other settings', () => {
+    const store = new SettingsStore(file, fakeCipher);
+    store.applyPatch({ rag: { rootPath: 'C:\\InterviewKnowledge', enabled: true } });
+    const reloaded = new SettingsStore(file, fakeCipher);
+    expect(reloaded.data.rag).toEqual({ rootPath: 'C:\\InterviewKnowledge', enabled: true });
+    expect(reloaded.data.llm).toEqual(defaultSettings().llm);
+  });
+
   it('boots with defaults when no file exists', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data).toEqual(defaultSettings());

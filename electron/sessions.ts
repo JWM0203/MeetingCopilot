@@ -17,7 +17,13 @@ export class SessionStore {
       if (!existsSync(this.filePath)) return { ...EMPTY };
       const raw = JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<SessionsFile>;
       if (!Array.isArray(raw.sessions)) return { ...EMPTY };
-      return { sessions: raw.sessions, currentId: raw.currentId ?? null };
+      return {
+        sessions: raw.sessions.map((session) => ({
+          ...session,
+          ragScope: session.ragScope ?? { enabled: false },
+        })),
+        currentId: raw.currentId ?? null,
+      };
     } catch (e) {
       console.warn('[sessions] load failed, starting empty:', (e as Error).message);
       return { ...EMPTY };
