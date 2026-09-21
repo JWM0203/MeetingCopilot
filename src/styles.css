@@ -664,6 +664,142 @@ body {
   letter-spacing: 0.4px;
 }
 
+.rag-settings {
+  margin: 14px 0 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-1);
+}
+
+.rag-folder-line,
+.rag-actions,
+.rag-status,
+.rag-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.rag-folder-line {
+  gap: 8px;
+}
+
+.rag-folder {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-body);
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.rag-toggle-row {
+  gap: 4px;
+}
+
+.rag-toggle {
+  width: fit-content;
+  gap: 7px;
+  color: var(--text-body) !important;
+  cursor: pointer;
+}
+
+.rag-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.rag-status {
+  min-height: 28px;
+  gap: 6px;
+  margin: 2px 0 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rag-status strong {
+  color: var(--text-body);
+  font-weight: 600;
+}
+
+.rag-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.rag-status-ready {
+  background: var(--on-text);
+}
+
+.rag-status-error,
+.rag-status-unavailable {
+  background: var(--error-text);
+}
+
+.rag-status-downloading,
+.rag-status-loading,
+.rag-status-scanning,
+.rag-status-parsing,
+.rag-status-embedding {
+  background: var(--tag-wait-text);
+}
+
+.rag-stats {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.rag-actions {
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.rag-failures {
+  max-height: 110px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--error-text);
+  background: var(--surface-soft);
+}
+
+.rag-failure {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) auto;
+  gap: 3px 8px;
+  padding: 4px 0;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.rag-failure > span {
+  overflow-wrap: anywhere;
+}
+
+.rag-failure > span:last-child {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+}
+
+.rag-failure code {
+  color: var(--tag-err-text);
+  font-size: 9px;
+}
+
+.rag-confirm {
+  margin-top: 8px;
+}
+
 .settings-actions {
   display: flex;
   gap: 8px;

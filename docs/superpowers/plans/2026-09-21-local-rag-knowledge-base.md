@@ -732,7 +732,7 @@ git commit -m "feat: ground answers with deadline-bound local retrieval"
 - Consumes: Task 4 `window.mc` RAG methods and `RagStatus`.
 - Produces: explicit enable/folder workflow, progress, counts, errors, rescan/rebuild actions, and remote-LLM disclosure.
 
-- [ ] **Step 1: Extract and test pure settings-view state**
+- [x] **Step 1: Extract and test pure settings-view state**
 
 Create and export from the component:
 
@@ -746,13 +746,13 @@ export function ragActionState(input: {
 
 Tests require that enable is impossible before folder selection, scans are impossible while downloading/scanning/indexing, and disabling remains possible in every phase.
 
-- [ ] **Step 2: Run UI-state tests and verify failure**
+- [x] **Step 2: Run UI-state tests and verify failure**
 
 Run: `npx vitest run test/ragUiState.spec.ts`
 
 Expected: FAIL because the component does not exist.
 
-- [ ] **Step 3: Implement `KnowledgeBaseSettings`**
+- [x] **Step 3: Implement `KnowledgeBaseSettings`**
 
 Use existing `settings-section`, `settings-row`, `settings-hint`, `btn`, and warning styles. Props are:
 
@@ -766,15 +766,15 @@ interface KnowledgeBaseSettingsProps {
 
 The component chooses a folder before enabling, persists `{ rag: { rootPath, enabled } }`, subscribes to progress, and exposes scan/rebuild buttons. A rebuild requires an in-app confirmation before invoking `scanRag(true)`. Show indexed file/chunk/failed counts and per-file error code/message. Do not display document contents.
 
-- [ ] **Step 4: Add complete Chinese and English copy**
+- [x] **Step 4: Add complete Chinese and English copy**
 
 Add labels for disabled, choose folder, model download, loading, scanning, embedding, ready, failed files, rescan, rebuild, retry, last update, local-processing statement, and the disclosure: only retrieved snippets are sent to the configured remote LLM.
 
-- [ ] **Step 5: Mount the component in SettingsPanel**
+- [x] **Step 5: Mount the component in SettingsPanel**
 
 Place it after Common and before Audio so the user sees it without expanding Advanced. Fetch status when the panel opens and keep the rest of `SettingsPanel` state/save behavior unchanged.
 
-- [ ] **Step 6: Run UI state, type, and build checks**
+- [x] **Step 6: Run UI state, type, and build checks**
 
 Run:
 
@@ -786,7 +786,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 7**
+- [x] **Step 7: Commit Task 7**
 
 ```bash
 git add src/components/KnowledgeBaseSettings.tsx src/components/SettingsPanel.tsx src/i18n.tsx src/styles.css test/ragUiState.spec.ts

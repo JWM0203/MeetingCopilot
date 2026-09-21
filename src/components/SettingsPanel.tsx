@@ -31,6 +31,7 @@ import { listMics } from '../audio/micCapture';
 import { useT } from '../i18n';
 import { ConnectionResult } from './providers/ConnectionResult';
 import { connectionResultCopy } from './providers/copy';
+import { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
 
 type AsrBackend = 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
 
@@ -653,6 +654,14 @@ export function SettingsPanel({
         </select>
         <span className="settings-inline-hint">{t.settings.autoLaunchHint}</span>
       </div>
+
+      <KnowledgeBaseSettings
+        settings={settings.rag}
+        onSettingsChange={(next) => {
+          setLive(next);
+          onSaved(next);
+        }}
+      />
 
       <div className="settings-section">{t.settings.audioSection}</div>
       <div className="settings-row">
