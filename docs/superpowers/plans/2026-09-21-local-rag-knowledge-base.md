@@ -209,7 +209,7 @@ git commit -m "feat: add local RAG retrieval primitives"
 - Consumes: Task 1 `RagChunk`, `chunkDocument`, and `chunkHash`.
 - Produces: `RagStore`, `RagIndexer`, `EmbeddingProvider`, `RagManifest`, `RagDocumentStatus`, and an immutable `IndexSnapshot`.
 
-- [ ] **Step 1: Write failing shard round-trip and corruption tests**
+- [x] **Step 1: Write failing shard round-trip and corruption tests**
 
 Use a temporary directory and verify atomic persistence, float fidelity, schema mismatch rejection, and corrupt-shard isolation:
 
@@ -229,13 +229,13 @@ it('excludes a shard whose vector byte count does not match metadata', () => {
 });
 ```
 
-- [ ] **Step 2: Run store tests and verify failure**
+- [x] **Step 2: Run store tests and verify failure**
 
 Run: `npx vitest run test/ragStore.spec.ts`
 
 Expected: FAIL because `RagStore` does not exist.
 
-- [ ] **Step 3: Implement the versioned atomic store**
+- [x] **Step 3: Implement the versioned atomic store**
 
 Define and validate these persisted structures:
 
@@ -263,7 +263,7 @@ export class RagStore {
 
 Write `*.tmp`, flush and close file handles, then `renameSync`. Reject vector files where `byteLength !== chunkCount * dimensions * 4`.
 
-- [ ] **Step 4: Write failing incremental indexer tests with a fake embedder**
+- [x] **Step 4: Write failing incremental indexer tests with a fake embedder**
 
 The fake embedder records passage batches and returns deterministic two-dimensional normalized vectors. Verify initial indexing, unchanged rescans, one-file updates, deletes, parse failure isolation, and chunk-vector reuse:
 
@@ -282,13 +282,13 @@ it('does not parse or embed unchanged documents twice', async () => {
 });
 ```
 
-- [ ] **Step 5: Run indexer tests and verify failure**
+- [x] **Step 5: Run indexer tests and verify failure**
 
 Run: `npx vitest run test/ragIndexer.spec.ts`
 
 Expected: FAIL because `RagIndexer` does not exist.
 
-- [ ] **Step 6: Implement bounded incremental indexing**
+- [x] **Step 6: Implement bounded incremental indexing**
 
 Export exact injectable interfaces:
 
@@ -316,13 +316,13 @@ export class RagIndexer {
 
 Ignore hidden entries, Office `~$` files, unsupported extensions, the active index directory, and symlinks resolving outside the root. Normalize stored relative paths to `/`. Limit parsing to two files concurrently and call `embedPassages` in batches of 16 chunks.
 
-- [ ] **Step 7: Run store and indexer tests**
+- [x] **Step 7: Run store and indexer tests**
 
 Run: `npx vitest run test/ragStore.spec.ts test/ragIndexer.spec.ts test/docparse.spec.ts`
 
 Expected: PASS, including all pre-existing parser tests.
 
-- [ ] **Step 8: Commit Task 2**
+- [x] **Step 8: Commit Task 2**
 
 ```bash
 git add electron/rag/store.ts electron/rag/indexer.ts test/ragStore.spec.ts test/ragIndexer.spec.ts

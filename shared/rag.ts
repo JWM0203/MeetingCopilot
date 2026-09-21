@@ -33,3 +33,26 @@ export interface RetrievedChunk {
   chunk: RagChunk;
   score: number;
 }
+
+export type RagDocumentState = 'ready' | 'error';
+
+export interface RagDocumentStatus {
+  id: string;
+  relativePath: string;
+  name: string;
+  size: number;
+  mtimeMs: number;
+  contentHash: string;
+  chunkCount: number;
+  state: RagDocumentState;
+  errorCode?: 'PARSE_FAILED' | 'EMPTY_DOCUMENT' | 'EMBEDDING_FAILED' | 'CORRUPT_SHARD';
+  errorMessage?: string;
+  updatedAt: string;
+}
+
+export interface RagProgress {
+  phase: 'scanning' | 'parsing' | 'embedding' | 'ready';
+  processed: number;
+  total: number;
+  currentPath?: string;
+}
