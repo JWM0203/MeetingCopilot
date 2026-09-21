@@ -53,6 +53,7 @@ export interface McApi {
     question: string;
     background?: string;
     imageDataUrl?: string;
+    ragScope?: import('../shared/rag').RagScope;
   }): void;
   /** capture full screen, drag a stealth region overlay; returns cropped dataURL or null */
   pickRegion(): Promise<string | null>;

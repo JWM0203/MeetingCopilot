@@ -24,6 +24,7 @@ import {
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
 import { decideRagLifecycle, RagHost } from './ragHost';
+import { retrieveForAnswer } from './ragAnswer';
 import {
   LocalPythonProbe,
   buildDiagnosticsReport,
@@ -62,6 +63,7 @@ import {
   type OnboardingProgressPatch,
   type ProviderTestRequest,
   type ProviderTestResult,
+  type RagScope,
   type SettingsPatch,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
@@ -1011,61 +1013,77 @@ function bootstrap(): void {
       }
       const ac = new AbortController();
       llmControllers.set(payload.requestId, ac);
-      const isTranslate = payload.mode === 'translate';
-      // session dual-slot material first; the global default KB only fills in
-      // when the session has nothing (translate stays a clean pass-through)
-      const hasMaterial = !!(payload.resume || payload.jd || payload.background);
-      const messages = buildAnswerMessages({
-        mode: payload.mode,
-        question: payload.question,
-        freeQuestion: payload.freeQuestion,
-        recentTranscript: payload.recentTranscript,
-        answerLang: payload.answerLang ?? settings.data.llm.answerLang,
-        history: payload.history,
-        resume: isTranslate ? undefined : payload.resume,
-        jd: isTranslate ? undefined : payload.jd,
-        memo: isTranslate ? undefined : payload.memo,
-        background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
-      });
+      void (async () => {
+        const isTranslate = payload.mode === 'translate';
+        const retrieval = await retrieveForAnswer({
+          host: rag,
+          requestId: payload.requestId,
+          enabled: settings.data.rag.enabled,
+          scope: payload.ragScope,
+          mode: payload.mode,
+          question: payload.mode === 'free' ? payload.freeQuestion ?? '' : payload.question ?? '',
+          recentTranscript: payload.recentTranscript,
+        });
+        if (ac.signal.aborted) return;
 
-      // "answer with multimodal": route through the vision provider (proxy-aware,
-      // non-streaming). Otherwise stream from the text LLM (direct, fastest).
-      const useVision =
-        settings.data.llm.answerWithVision &&
-        payload.mode !== 'translate' &&
-        !!settings.data.vision.baseUrl &&
-        !!settings.data.vision.model &&
-        !!settings.getVisionApiKey();
+        // session dual-slot material first; the global default KB only fills in
+        // when the session has nothing (translate stays a clean pass-through)
+        const hasMaterial = !!(payload.resume || payload.jd || payload.background);
+        const messages = buildAnswerMessages({
+          mode: payload.mode,
+          question: payload.question,
+          freeQuestion: payload.freeQuestion,
+          recentTranscript: payload.recentTranscript,
+          answerLang: payload.answerLang ?? settings.data.llm.answerLang,
+          history: payload.history,
+          resume: isTranslate ? undefined : payload.resume,
+          jd: isTranslate ? undefined : payload.jd,
+          memo: isTranslate ? undefined : payload.memo,
+          background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
+          retrievedContext: retrieval.context,
+        });
 
-      // a real answer request refreshes the provider-side prefix cache itself
-      if (!isTranslate && !useVision && payload.mode !== 'free') {
-        lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
-        lastPrefixActivity = Date.now();
-      }
+        // "answer with multimodal": route through the vision provider (proxy-aware,
+        // non-streaming). Otherwise stream from the text LLM (direct, fastest).
+        const useVision =
+          settings.data.llm.answerWithVision &&
+          payload.mode !== 'translate' &&
+          !!settings.data.vision.baseUrl &&
+          !!settings.data.vision.model &&
+          !!settings.getVisionApiKey();
 
-      const work = useVision
-        ? visionChat(
-            {
-              baseUrl: settings.data.vision.baseUrl!,
-              model: settings.data.vision.model!,
-              apiKey: settings.getVisionApiKey()!,
-              proxyUrl: settings.data.vision.proxyUrl,
-            },
-            messages,
-            ac.signal,
-          ).then((text) => {
-            sendEv({ requestId: payload.requestId, kind: 'delta', text });
-            return { text };
-          })
-        : chatStream(
-            { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
-            messages,
-            { onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }) },
-            ac.signal,
-          );
+        // a real answer request refreshes the provider-side prefix cache itself
+        if (!isTranslate && !useVision && payload.mode !== 'free') {
+          lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
+          lastPrefixActivity = Date.now();
+        }
 
-      work
-        .then((r) => {
+        const result = useVision
+          ? await visionChat(
+              {
+                baseUrl: settings.data.vision.baseUrl!,
+                model: settings.data.vision.model!,
+                apiKey: settings.getVisionApiKey()!,
+                proxyUrl: settings.data.vision.proxyUrl,
+              },
+              messages,
+              ac.signal,
+            ).then((text) => {
+              sendEv({ requestId: payload.requestId, kind: 'delta', text });
+              return { text };
+            })
+          : await chatStream(
+              { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+              messages,
+              { onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }) },
+              ac.signal,
+            );
+
+        return { result, sources: retrieval.sources };
+      })()
+        .then((completed) => {
+          if (!completed) return;
+          const { result: r, sources } = completed;
           const u = (r as ChatResult).usage;
           if (u) {
             // prewarm acceptance signal: after a warm, hit ≈ prefix length
@@ -1073,7 +1091,12 @@ function bootstrap(): void {
               `[llm] done mode=${payload.mode} cache_hit=${u.prompt_cache_hit_tokens ?? '?'} cache_miss=${u.prompt_cache_miss_tokens ?? '?'}`,
             );
           }
-          sendEv({ requestId: payload.requestId, kind: 'done', text: r.text });
+          sendEv({
+            requestId: payload.requestId,
+            kind: 'done',
+            text: r.text,
+            ...(sources.length ? { sources } : {}),
+          });
         })
         .catch((e: Error) => {
           if (ac.signal.aborted) return; // user cancelled — not an error
@@ -1085,6 +1108,7 @@ function bootstrap(): void {
     ipcMain.on(IPC.llmCancel, (_e, requestId: string) => {
       llmControllers.get(requestId)?.abort();
       llmControllers.delete(requestId);
+      rag.cancel(requestId);
     });
 
     // P1-5: fold a finished Q&A into the rolling interview memo. Async and
@@ -1125,7 +1149,13 @@ function bootstrap(): void {
     // the capture automatically (content protection). ----
     ipcMain.on(
       IPC.shotAsk,
-      (_e, payload: { requestId: string; question: string; background?: string; imageDataUrl?: string }) => {
+      (_e, payload: {
+        requestId: string;
+        question: string;
+        background?: string;
+        imageDataUrl?: string;
+        ragScope?: RagScope;
+      }) => {
       const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
       const vision = settings.data.vision;
       const apiKey = settings.getVisionApiKey();
@@ -1145,17 +1175,36 @@ function bootstrap(): void {
         : desktopCapturer
             .getSources({ types: ['screen'], thumbnailSize: { width: 1600, height: 900 } })
             .then((sources) => sources[0].thumbnail.toDataURL());
-      imgP
-        .then((dataUrl) =>
+      const retrievalP = retrieveForAnswer({
+        host: rag,
+        requestId: payload.requestId,
+        enabled: settings.data.rag.enabled,
+        scope: payload.ragScope,
+        mode: 'free',
+        question: payload.question,
+        recentTranscript: [],
+      });
+      Promise.all([imgP, retrievalP])
+        .then(([dataUrl, retrieval]) =>
           visionChat(
             { baseUrl: vision.baseUrl!, model: vision.model!, apiKey, proxyUrl: vision.proxyUrl },
-            buildVisionMessages(payload.question, dataUrl, payload.background || knowledge.text),
+            buildVisionMessages(
+              payload.question,
+              dataUrl,
+              payload.background || knowledge.text,
+              retrieval.context,
+            ),
             ac.signal,
-          ),
+          ).then((text) => ({ text, sources: retrieval.sources })),
         )
-        .then((text) => {
+        .then(({ text, sources }) => {
           sendEv({ requestId: payload.requestId, kind: 'delta', text });
-          sendEv({ requestId: payload.requestId, kind: 'done', text });
+          sendEv({
+            requestId: payload.requestId,
+            kind: 'done',
+            text,
+            ...(sources.length ? { sources } : {}),
+          });
         })
         .catch((e: Error) => {
           if (ac.signal.aborted) return;

@@ -487,11 +487,13 @@ export interface LlmAskPayload {
   jd?: string;
   /** rolling interview memo (P1) */
   memo?: string;
+  /** per-session local-library scope; omitted/disabled preserves legacy behavior */
+  ragScope?: RagScope;
 }
 
 export type LlmEvent =
   | { requestId: string; kind: 'delta'; text: string }
-  | { requestId: string; kind: 'done'; text: string }
+  | { requestId: string; kind: 'done'; text: string; sources?: RagSourceRef[] }
   | { requestId: string; kind: 'error'; message: string };
 
 // ---------- System tray (main -> renderer) ----------

@@ -194,7 +194,8 @@ export function App() {
       const sid = currentIdRef.current;
       if (!sid) return;
       const requestId = uid('req');
-      const segs = sessionsRef.current.find((x) => x.id === sid)?.segments ?? [];
+      const session = sessionsRef.current.find((x) => x.id === sid);
+      const segs = session?.segments ?? [];
       // continuous: resolve the actual question NOW — the other party's latest
       // line — so the turn label (and thus session history) carries the real
       // question instead of a constant '对方最新发言' (v1 history-label bug)
@@ -219,6 +220,7 @@ export function App() {
         recentTranscript: segs.slice(-30).map((s) => s.text),
         answerLang: answerLangRef.current,
         history: mode === 'translate' ? undefined : buildHistory(),
+        ragScope: session?.ragScope?.enabled ? session.ragScope : undefined,
         ...material,
       };
       window.mc.llmAsk(payload);
@@ -240,8 +242,15 @@ export function App() {
       });
       maybeTitle(sid, question || tRef.current.app.shotQuestion);
       const m = currentMaterial();
+      const ragScope = sessionsRef.current.find((session) => session.id === sid)?.ragScope;
       const background = [m.resume, m.jd].filter(Boolean).join('\n\n') || undefined;
-      window.mc.shotAsk({ requestId, question, background, imageDataUrl });
+      window.mc.shotAsk({
+        requestId,
+        question,
+        background,
+        imageDataUrl,
+        ragScope: ragScope?.enabled ? ragScope : undefined,
+      });
     },
     [appendTurn, currentMaterial, maybeTitle],
   );
@@ -340,7 +349,14 @@ export function App() {
           turns: s.turns.map((t) => {
             if (t.id !== ev.requestId) return t;
             if (ev.kind === 'delta') return { ...t, text: t.text + ev.text };
-            if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done' };
+            if (ev.kind === 'done') {
+              return {
+                ...t,
+                text: ev.text || t.text,
+                status: 'done',
+                ...(ev.sources ? { sources: ev.sources } : {}),
+              };
+            }
             return { ...t, status: 'error', error: ev.message };
           }),
         })),

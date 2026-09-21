@@ -103,7 +103,7 @@ export class RagHost {
     if (!this.child || !input.scope.enabled || !input.query.trim()) {
       return { context: '', sources: [], durationMs: performance.now() - started, fallback: 'unavailable' };
     }
-    const requestId = randomUUID();
+    const requestId = input.requestId ?? randomUUID();
     const response = this.waitFor<RagQueryResult>(requestId);
     this.send({ type: 'query', requestId, query: input.query, scope: input.scope, limit: input.limit ?? 6 });
     let timer: NodeJS.Timeout | undefined;
@@ -123,6 +123,8 @@ export class RagHost {
 
   cancel(requestId: string): void {
     this.send({ type: 'cancel', requestId });
+    this.pending.get(requestId)?.reject(new Error('RAG request cancelled'));
+    this.pending.delete(requestId);
   }
 
   async stop(): Promise<void> {

@@ -84,6 +84,8 @@ export interface RagStatus {
 }
 
 export interface RagQueryInput {
+  /** Optional caller correlation id so cancellation reaches the worker request. */
+  requestId?: string;
   query: string;
   scope: RagScope;
   limit?: number;

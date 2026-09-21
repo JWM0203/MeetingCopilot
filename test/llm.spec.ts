@@ -66,6 +66,100 @@ describe('extractDelta', () => {
 });
 
 describe('buildAnswerMessages', () => {
+  it('preserves the complete legacy prompt when retrieval is absent', () => {
+    const messages = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: ['上一句', '当前一句'],
+      resume: '简历内容',
+      jd: 'JD内容',
+      memo: '面试备忘',
+      history: [
+        { role: 'user', content: '历史问题' },
+        { role: 'assistant', content: '历史回答' },
+      ],
+    });
+
+    expect(messages).toEqual([
+      {
+        role: 'system',
+        content: [
+          '你是我的实时面试提词器。我正在参加面试，屏幕上是面试官说话的实时转录。',
+          '你输出的内容就是我接下来要照着念的话，必须遵守：',
+          '- 全程用第一人称「我」，口语自然，让我可以一字不改地念出来；',
+          '- 第一句先给结论或直接回应，再展开 2-3 个短要点；',
+          '- 全文控制在 30-60 秒内可念完（约 150-350 字）；',
+          '- 不用 Markdown 标题、编号、加粗等书面格式，分点直接换行；',
+          '- 行为/经历类问题按 STAR 展开：情境→任务→行动→结果；',
+          '- 技术类问题先一句话讲思路，再给关键点，必要时给复杂度或对比结论；',
+          '- 只能使用【简历】里的真实经历，绝不编造简历之外的公司、项目、数字；',
+          '- 没把握的问题，给出稳妥的通用说法，或一句得体的争取思考时间的话术。',
+          '',
+          '【简历】（我的真实资料，回答只能基于此）',
+          '简历内容',
+          '【简历结束】',
+          '',
+          '【岗位JD】（本场面试针对的职位，回答向它贴合）',
+          'JD内容',
+          '【岗位JD结束】',
+          '',
+          '- 用【中文】输出。',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: '【面试进行备忘】（此前面试内容的滚动摘要，保持前后一致）\n面试备忘',
+      },
+      { role: 'assistant', content: '收到，我会保持一致。' },
+      { role: 'user', content: '历史问题' },
+      { role: 'assistant', content: '历史回答' },
+      {
+        role: 'user',
+        content: '【最近的对话转录】\n上一句\n当前一句\n\n面试官刚才说：\n“x”\n请直接给出我可以照着念的回答。',
+      },
+    ]);
+  });
+
+  it('adds retrieved context only to the dynamic final message', () => {
+    const input = { mode: 'segment' as const, question: '如何保证幂等？', recentTranscript: ['项目追问'] };
+    const base = buildAnswerMessages(input);
+    const withRag = buildAnswerMessages({
+      ...input,
+      retrievedContext: '【来源：projects/payments.md】\n幂等键避免重复扣款。',
+    });
+    expect(withRag[0]).toEqual(base[0]);
+    expect(withRag.at(-1)?.content).toContain('【本次检索资料】');
+    expect(withRag.at(-1)?.content).toContain('幂等键');
+  });
+
+  it('is byte-for-byte identical when retrieved context is empty', () => {
+    const input = { mode: 'segment' as const, question: 'x', recentTranscript: ['context'] };
+    expect(buildAnswerMessages({ ...input, retrievedContext: '  ' })).toEqual(buildAnswerMessages(input));
+  });
+
+  it('grounds free and vision questions but never translation', () => {
+    const context = '【来源：notes.md】\n本地资料';
+    const free = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: '总结重点',
+      recentTranscript: [],
+      retrievedContext: context,
+    });
+    expect(free.at(-1)?.content).toContain('本地资料');
+
+    const vision = buildVisionMessages('看图回答', 'data:image/png;base64,AAA', undefined, context);
+    const visionContent = vision.at(-1)?.content as Array<{ type: string; text?: string }>;
+    expect(visionContent.at(-1)?.text).toContain('本地资料');
+
+    const translated = buildAnswerMessages({
+      mode: 'translate',
+      question: 'hello',
+      recentTranscript: [],
+      retrievedContext: context,
+    });
+    expect(JSON.stringify(translated)).not.toContain('本地资料');
+  });
+
   it('segment mode quotes the target sentence and includes context', () => {
     const msgs = buildAnswerMessages({
       mode: 'segment',

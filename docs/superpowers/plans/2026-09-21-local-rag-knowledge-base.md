@@ -631,11 +631,11 @@ git commit -m "feat: manage local RAG lifecycle from the main process"
 - Consumes: Task 3 `RagHost.query`; Task 4 `RagScope` and `RagSourceRef`.
 - Produces: optional retrieved context in prompts, source metadata in `LlmEvent`, and cancellation propagation.
 
-- [ ] **Step 1: Capture the exact legacy prompt before changing code**
+- [x] **Step 1: Capture the exact legacy prompt before changing code**
 
 Add a regression fixture in `test/llm.spec.ts` that calls `buildAnswerMessages` without retrieved chunks and asserts the complete array, including stable prefix, memo placement, history, transcript, and final question. Do not use a snapshot file; keep the expected strings inline so review shows any change.
 
-- [ ] **Step 2: Write failing retrieved-context prompt tests**
+- [x] **Step 2: Write failing retrieved-context prompt tests**
 
 Add:
 
@@ -653,13 +653,13 @@ it('is byte-for-byte identical when retrieved context is empty', () => {
 });
 ```
 
-- [ ] **Step 3: Run prompt tests and verify failure**
+- [x] **Step 3: Run prompt tests and verify failure**
 
 Run: `npx vitest run test/llm.spec.ts`
 
 Expected: FAIL because `retrievedContext` is not accepted.
 
-- [ ] **Step 4: Implement prompt integration**
+- [x] **Step 4: Implement prompt integration**
 
 Add `retrievedContext?: string` to `AnswerPromptInput`. Append this block to the final user message only when trimmed content exists:
 
@@ -672,7 +672,7 @@ Add `retrievedContext?: string` to `AnswerPromptInput`. Append this block to the
 
 Apply the same optional block to free-form and vision prompt builders. Translation remains unchanged.
 
-- [ ] **Step 5: Write failing answer-fallback orchestration tests**
+- [x] **Step 5: Write failing answer-fallback orchestration tests**
 
 Extract a pure/injectable helper from `electron/main.ts`:
 
@@ -689,17 +689,17 @@ export async function retrieveForAnswer(input: {
 
 Tests require no host call when disabled/translate/no question, an empty result when the host throws, and a query built from the current question plus at most the last three transcript lines.
 
-- [ ] **Step 6: Wire retrieval before streaming without changing legacy payloads**
+- [x] **Step 6: Wire retrieval before streaming without changing legacy payloads**
 
 Extend `LlmAskPayload` and screenshot payload with optional `ragScope`. Extend `LlmEvent` done events with optional `sources`. In `llm:ask`, create the existing request abort controller first, await `retrieveForAnswer`, then build messages and start `chatStream`. `llm:cancel` also calls `ragHost.cancel(requestId)`. The retrieved block and sources remain empty on any failure or deadline.
 
 Return source references only on the `done` event. Do not put document bodies in `LlmEvent`; `excerpt` is capped at 240 characters.
 
-- [ ] **Step 7: Pass session scope from the renderer and persist sources**
+- [x] **Step 7: Pass session scope from the renderer and persist sources**
 
 `App.askLlm` reads the current session `ragScope` and includes it only when enabled. The LLM event reducer stores `ev.sources` on the finished `StoredTurn`. Old turns and sessions remain valid.
 
-- [ ] **Step 8: Run answer, prompt, and existing LLM tests**
+- [x] **Step 8: Run answer, prompt, and existing LLM tests**
 
 Run:
 
@@ -710,7 +710,7 @@ npm run typecheck
 
 Expected: PASS; the explicit legacy prompt assertion remains unchanged.
 
-- [ ] **Step 9: Commit Task 6**
+- [x] **Step 9: Commit Task 6**
 
 ```bash
 git add shared/protocol.ts electron/llm/prompts.ts electron/main.ts electron/preload.ts src/App.tsx test/llm.spec.ts test/ragAnswerFallback.spec.ts

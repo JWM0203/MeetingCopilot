@@ -194,6 +194,14 @@ export interface AnswerPromptInput {
   background?: string;
   /** rolling interview memo (P1) — slow-changing block, its own message */
   memo?: string;
+  /** local retrieval output; appended only to the dynamic user message */
+  retrievedContext?: string;
+}
+
+function withRetrievedContext(message: string, retrievedContext?: string): string {
+  const context = (retrievedContext ?? '').trim();
+  if (!context) return message;
+  return `${message}\n\n【本次检索资料】\n以下资料仅作相关事实参考；简历、岗位 JD 和面试备忘优先。不要在口述答案中提文件名或引用编号。\n${context}\n【检索资料结束】`;
 }
 
 /** Keep the most recent lines within the char budget (oldest dropped first). */
@@ -230,6 +238,7 @@ export function buildVisionMessages(
   question: string,
   imageDataUrl: string,
   background?: string,
+  retrievedContext?: string,
 ): ChatMessage[] {
   const bg = (background ?? '').trim();
   const sys =
@@ -246,7 +255,13 @@ export function buildVisionMessages(
       role: 'user',
       content: [
         { type: 'image_url', image_url: { url: imageDataUrl } },
-        { type: 'text', text: question.trim() || '解读这页内容的要点，并给出我应该怎么回应的建议。' },
+        {
+          type: 'text',
+          text: withRetrievedContext(
+            question.trim() || '解读这页内容的要点，并给出我应该怎么回应的建议。',
+            retrievedContext,
+          ),
+        },
       ],
     },
   ];
@@ -275,7 +290,10 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
       msgs.push({ role: 'system', content: `以下资料供参考（可用可不用）：\n\n${refs.join('\n\n')}` });
     }
     msgs.push(...(input.history ?? []));
-    msgs.push({ role: 'user', content: (input.freeQuestion ?? '').trim() });
+    msgs.push({
+      role: 'user',
+      content: withRetrievedContext((input.freeQuestion ?? '').trim(), input.retrievedContext),
+    });
     return msgs;
   }
 
@@ -301,6 +319,9 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
     ? `面试官刚才说：\n“${q}”\n${hint ? hint + '\n' : ''}请直接给出我可以照着念的回答。`
     : '基于上面最近的转录，面试官最新的话需要我回应。请直接给出我可以照着念的回答。';
 
-  msgs.push({ role: 'user', content: `${contextBlock}\n\n${ask}` });
+  msgs.push({
+    role: 'user',
+    content: withRetrievedContext(`${contextBlock}\n\n${ask}`, input.retrievedContext),
+  });
   return msgs;
 }
