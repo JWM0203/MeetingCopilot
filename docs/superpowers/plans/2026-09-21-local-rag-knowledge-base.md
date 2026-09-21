@@ -557,7 +557,7 @@ git commit -m "feat: add backward-compatible RAG settings and IPC"
 - Consumes: Task 3 `RagHost`; Task 4 settings and IPC.
 - Produces: explicit folder selection, enable/disable lifecycle, scan/rebuild handlers, status forwarding, safe shutdown, and redacted diagnostics.
 
-- [ ] **Step 1: Extract and test a pure lifecycle decision function**
+- [x] **Step 1: Extract and test a pure lifecycle decision function**
 
 Create in `electron/ragHost.ts`:
 
@@ -572,13 +572,13 @@ export function decideRagLifecycle(
 
 Tests must cover disabled-to-disabled no-op, enable without root no-op, enable with root start, root change restart, and disable stop.
 
-- [ ] **Step 2: Run lifecycle tests and verify failure**
+- [x] **Step 2: Run lifecycle tests and verify failure**
 
 Run: `npx vitest run test/ragLifecycle.spec.ts`
 
 Expected: FAIL because `decideRagLifecycle` does not exist.
 
-- [ ] **Step 3: Wire the host into application lifecycle**
+- [x] **Step 3: Wire the host into application lifecycle**
 
 Instantiate one `RagHost`. Use `join(app.getPath('userData'), 'knowledge-v1')` for index shards and `join(app.getPath('userData'), 'models', 'rag')` for the model cache. Start only after onboarding and only when `settings.data.rag.enabled && settings.data.rag.rootPath`. Stop on disable and `before-quit`.
 
@@ -593,21 +593,21 @@ dialog.showOpenDialog({
 
 Normalize and validate the selected path before saving. Never scan before the renderer explicitly enables RAG.
 
-- [ ] **Step 4: Add scan/status/document IPC handlers**
+- [x] **Step 4: Add scan/status/document IPC handlers**
 
 `rag:status-get` returns replayable current status, `rag:documents-get` returns document metadata and errors only, and scan/rebuild refuse when disabled or missing a root. Forward host progress via `win?.webContents.send(IPC.ragStatus, status)`.
 
-- [ ] **Step 5: Add redacted diagnostics tests and implementation**
+- [x] **Step 5: Add redacted diagnostics tests and implementation**
 
 Diagnostics may include enabled state, phase, counts, model ID/revision, index schema, last duration, and error codes. Assert that generated output does not contain root paths, relative document paths, document names, excerpts, or chunks.
 
-- [ ] **Step 6: Run lifecycle and diagnostics tests**
+- [x] **Step 6: Run lifecycle and diagnostics tests**
 
 Run: `npx vitest run test/ragLifecycle.spec.ts test/diagnostics.spec.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```bash
 git add electron/main.ts electron/ragHost.ts electron/diagnostics.ts test/ragLifecycle.spec.ts test/diagnostics.spec.ts

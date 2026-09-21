@@ -18,6 +18,7 @@ import {
   type ProviderCapability,
 } from '../shared/providerCatalog';
 import { redactSecrets } from '../shared/redact';
+import type { RagStatus } from '../shared/rag';
 
 // ---------- sanitized error ring buffer ----------
 
@@ -127,6 +128,8 @@ export interface DiagnosticsFacts {
   knowledgeChars: number;
   capture: { active: boolean; lastStartedAt?: string; lastStoppedAt?: string };
   asr: { ready: boolean; ep?: string; gpuSuspect?: boolean; state?: string };
+  /** Aggregate health only. Paths, names, messages, and excerpts are excluded. */
+  rag: RagStatus;
   localPython: ProbeStatus;
   errors: DiagnosticErrorEntry[];
   generatedAt: Date;
@@ -232,6 +235,7 @@ export function buildDiagnosticsReport(f: DiagnosticsFacts): string {
     `${pad('Local python')}: ${f.localPython}`,
     `${pad('Proxy configured')}: ${yesNo(!!s.vision.proxyUrl)}`,
     `${pad('Knowledge base')}: ${f.knowledgeChars} chars (content excluded)`,
+    `${pad('RAG index')}: enabled=${yesNo(f.rag.enabled)} phase=${f.rag.phase} files=${f.rag.fileCount} chunks=${f.rag.chunkCount} failed=${f.rag.failedCount} error=${f.rag.errorCode ?? 'none'}`,
     `${pad('Custom models dir')}: ${yesNo(!!asr.modelsDir)}`,
     '',
     `Recent errors (sanitized, oldest first, ${f.errors.length}):`,

@@ -15,14 +15,15 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { release } from 'os';
-import { join } from 'path';
+import { basename, join, resolve } from 'path';
 import {
   captureKindForPlatform,
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
+import { decideRagLifecycle, RagHost } from './ragHost';
 import {
   LocalPythonProbe,
   buildDiagnosticsReport,
@@ -40,7 +41,6 @@ import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shar
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
 import { DOC_EXTENSIONS, extractDocText } from './docparse';
-import { basename } from 'path';
 import { chatOnce, chatStream, type ChatResult } from './llm/adapter';
 import { visionChat } from './llm/vision';
 import {
@@ -126,6 +126,7 @@ function bootstrap(): void {
   /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
   let capturing = false;
   const asr = new AsrHost();
+  const rag = new RagHost();
   const sidecar = new FunasrSidecar();
   const tray = new AppTray();
 
@@ -138,6 +139,44 @@ function bootstrap(): void {
     pub.knowledge = { chars: knowledge.chars };
     return pub;
   }
+
+  const ragStartOptions = (rootPath: string) => ({
+    indexDir: join(app.getPath('userData'), 'knowledge-v1'),
+    modelDir: join(app.getPath('userData'), 'models', 'rag'),
+    rootPath,
+  });
+
+  async function startRag(rootPath: string): Promise<void> {
+    try {
+      await rag.start(ragStartOptions(rootPath));
+    } catch (error) {
+      console.error(`[rag] lifecycle failed: ${(error as Error).name || 'Error'}`);
+    }
+  }
+
+  let ragLifecycle = Promise.resolve();
+  function queueRagLifecycle(
+    before: { enabled: boolean; rootPath?: string },
+    after: { enabled: boolean; rootPath?: string },
+  ): void {
+    ragLifecycle = ragLifecycle.then(async () => {
+      const action = decideRagLifecycle(before, after, rag.isRunning);
+      if (action === 'stop') await rag.stop();
+      else if (action === 'start') await startRag(after.rootPath!);
+      else if (action === 'restart') {
+        await rag.stop();
+        await startRag(after.rootPath!);
+      }
+    });
+  }
+
+  function validatedRagRoot(value: string): string {
+    const rootPath = resolve(value);
+    if (!statSync(rootPath).isDirectory()) throw new Error('Knowledge base root is not a directory');
+    return rootPath;
+  }
+
+  rag.onStatus((status) => win?.webContents.send(IPC.ragStatus, status));
 
   function buildAsrOptions() {
     const a = settings.data.asr;
@@ -453,6 +492,9 @@ function bootstrap(): void {
   /** normal boot: warm the ASR worker, bind hotkeys, show the overlay */
   function startMainApp(): void {
     void startAsr();
+    if (settings.data.rag.enabled && settings.data.rag.rootPath) {
+      void startRag(settings.data.rag.rootPath);
+    }
     registerHotkeys();
     syncAutoLaunch();
     createWindow();
@@ -630,6 +672,10 @@ function bootstrap(): void {
     // cloud engines can't race the subscription (stuck "模型加载中" bug)
     ipcMain.handle(IPC.asrReplay, () => ({ ready: asr.lastReady, status: asr.lastStatus }));
     ipcMain.handle(IPC.settingsSet, (_e, patch: SettingsPatch) => {
+      const ragBefore = { ...settings.data.rag };
+      if (patch.rag?.rootPath !== undefined) {
+        patch = { ...patch, rag: { ...patch.rag, rootPath: validatedRagRoot(patch.rag.rootPath) } };
+      }
       settings.applyPatch(patch);
       if (patch.ui?.hotkeyToggle !== undefined || patch.ui?.hotkeyShot !== undefined) {
         registerHotkeys();
@@ -658,6 +704,9 @@ function bootstrap(): void {
         else void asr.stop().then(() => startAsr());
       } else if (patch.asr?.language) {
         asr.setLanguage(patch.asr.language);
+      }
+      if (patch.rag && settings.data.onboarding.completed) {
+        queueRagLifecycle(ragBefore, { ...settings.data.rag });
       }
       return publicSettings();
     });
@@ -786,6 +835,7 @@ function bootstrap(): void {
           gpuSuspect: ready?.gpuSuspect,
           state: status?.state,
         },
+        rag: rag.currentStatus,
         localPython: pythonProbe.status,
         errors: recentDiagnosticErrors(),
         generatedAt: new Date(),
@@ -818,6 +868,28 @@ function bootstrap(): void {
     ipcMain.handle(IPC.knowledgeClear, () => {
       knowledge.clear();
       return { chars: knowledge.chars };
+    });
+    ipcMain.handle(IPC.ragChooseRoot, async (): Promise<string | null> => {
+      const result = await dialog.showOpenDialog({
+        title: T().ragChooseRootTitle,
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      return validatedRagRoot(result.filePaths[0]);
+    });
+    ipcMain.handle(IPC.ragStatusGet, () => rag.currentStatus);
+    ipcMain.handle(IPC.ragDocumentsGet, () => rag.currentDocuments);
+    ipcMain.handle(IPC.ragScan, async () => {
+      const config = settings.data.rag;
+      if (!config.enabled || !config.rootPath) throw new Error('Local knowledge base is disabled or not configured');
+      if (!rag.isRunning) await rag.start(ragStartOptions(config.rootPath));
+      return rag.scan(config.rootPath, false);
+    });
+    ipcMain.handle(IPC.ragRebuild, async () => {
+      const config = settings.data.rag;
+      if (!config.enabled || !config.rootPath) throw new Error('Local knowledge base is disabled or not configured');
+      if (!rag.isRunning) await rag.start(ragStartOptions(config.rootPath));
+      return rag.scan(config.rootPath, true);
     });
     ipcMain.handle(IPC.knowledgePick, async (_e, slot: 'resume' | 'jd' = 'resume') => {
       const r = await dialog.showOpenDialog({
@@ -1142,6 +1214,7 @@ function bootstrap(): void {
     globalShortcut.unregisterAll();
     tray.destroy();
     void asr.stop();
+    void rag.stop();
     void sidecar.stop();
   });
 

@@ -65,7 +65,7 @@ async function initialize(message: Extract<RagWorkerIn, { type: 'init' }>): Prom
     indexer = new RagIndexer(new RagStore(message.indexDir), embedder);
     snapshot = indexer.load(message.rootPath);
     status = statusFromSnapshot('ready');
-    post({ type: 'ready', requestId: message.requestId, status });
+    post({ type: 'ready', requestId: message.requestId, status, documents: snapshot.documents });
   } catch (error) {
     post({ type: 'error', requestId: message.requestId, code: 'MODEL_LOAD_FAILED', message: (error as Error).message });
   }
@@ -87,7 +87,7 @@ async function scan(message: Extract<RagWorkerIn, { type: 'scan' }>): Promise<vo
       ? await indexer.rebuild(message.rootPath, controller.signal, onProgress)
       : await indexer.scan(message.rootPath, controller.signal, onProgress);
     status = statusFromSnapshot('ready');
-    post({ type: 'ready', requestId: message.requestId, status });
+    post({ type: 'ready', requestId: message.requestId, status, documents: snapshot.documents });
   } catch (error) {
     if (!controller.signal.aborted) {
       post({ type: 'error', requestId: message.requestId, code: 'SCAN_FAILED', message: (error as Error).message });

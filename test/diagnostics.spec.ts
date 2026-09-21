@@ -168,6 +168,7 @@ function facts(store: SettingsStore, over: Partial<DiagnosticsFacts> = {}): Diag
     knowledgeChars: 4096,
     capture: { active: false, lastStartedAt: '2026-08-17T08:00:00.000Z' },
     asr: { ready: true, ep: 'cloud-rt', gpuSuspect: false, state: 'listening' },
+    rag: { phase: 'disabled', enabled: false, fileCount: 0, chunkCount: 0, failedCount: 0 },
     localPython: 'no',
     errors: recentDiagnosticErrors(),
     generatedAt: new Date('2026-08-17T09:30:00.000Z'),
@@ -176,6 +177,31 @@ function facts(store: SettingsStore, over: Partial<DiagnosticsFacts> = {}): Diag
 }
 
 describe('buildDiagnosticsReport', () => {
+  it('reports RAG health without exposing roots, document paths, or excerpts', () => {
+    const store = seededStore();
+    store.applyPatch({ rag: { enabled: true, rootPath: 'C:\\Users\\secret\\interview-library' } });
+    const report = buildDiagnosticsReport(
+      facts(store, {
+        rag: {
+          phase: 'ready',
+          enabled: true,
+          fileCount: 120,
+          chunkCount: 860,
+          failedCount: 2,
+          errorCode: 'PARTIAL_FAILURE',
+          currentPath: 'private/acme/payments.md',
+          message: 'excerpt: confidential architecture',
+        },
+      } as Partial<DiagnosticsFacts>),
+    );
+
+    expect(report).toContain('RAG index');
+    expect(report).toContain('enabled=yes phase=ready files=120 chunks=860 failed=2 error=PARTIAL_FAILURE');
+    expect(report).not.toContain('interview-library');
+    expect(report).not.toContain('payments.md');
+    expect(report).not.toContain('confidential architecture');
+  });
+
   it('excludes every secret and every piece of user content', () => {
     const store = seededStore();
     // things that MUST NOT appear, planted where they really live

@@ -1,4 +1,4 @@
-import type { RagQueryResult, RagScope, RagStatus } from '../../shared/rag';
+import type { RagDocumentStatus, RagQueryResult, RagScope, RagStatus } from '../../shared/rag';
 
 export type RagWorkerIn =
   | { type: 'init'; requestId: string; indexDir: string; modelDir: string; rootPath: string }
@@ -8,7 +8,7 @@ export type RagWorkerIn =
   | { type: 'shutdown' };
 
 export type RagWorkerOut =
-  | { type: 'ready'; requestId: string; status: RagStatus }
+  | { type: 'ready'; requestId: string; status: RagStatus; documents?: readonly RagDocumentStatus[] }
   | { type: 'progress'; status: RagStatus }
   | { type: 'result'; requestId: string; result: RagQueryResult }
   | { type: 'error'; requestId?: string; code: string; message: string };
@@ -35,12 +35,33 @@ function isResult(value: unknown): value is RagQueryResult {
   );
 }
 
+function isDocument(value: unknown): value is RagDocumentStatus {
+  if (!value || typeof value !== 'object') return false;
+  const document = value as Partial<RagDocumentStatus>;
+  return (
+    typeof document.id === 'string' &&
+    typeof document.relativePath === 'string' &&
+    typeof document.name === 'string' &&
+    typeof document.size === 'number' &&
+    typeof document.mtimeMs === 'number' &&
+    typeof document.contentHash === 'string' &&
+    typeof document.chunkCount === 'number' &&
+    (document.state === 'ready' || document.state === 'error') &&
+    typeof document.updatedAt === 'string'
+  );
+}
+
 export function isRagWorkerOut(value: unknown): value is RagWorkerOut {
   if (!value || typeof value !== 'object') return false;
   const message = value as Partial<RagWorkerOut> & Record<string, unknown>;
   switch (message.type) {
     case 'ready':
-      return typeof message.requestId === 'string' && isStatus(message.status);
+      return (
+        typeof message.requestId === 'string' &&
+        isStatus(message.status) &&
+        (message.documents === undefined ||
+          (Array.isArray(message.documents) && message.documents.every(isDocument)))
+      );
     case 'progress':
       return isStatus(message.status);
     case 'result':

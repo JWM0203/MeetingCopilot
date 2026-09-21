@@ -3,6 +3,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import {
   RAG_QUERY_TIMEOUT_MS,
+  type RagDocumentStatus,
   type RagQueryInput,
   type RagQueryResult,
   type RagStatus,
@@ -22,9 +23,23 @@ const EMPTY_STATUS: RagStatus = {
   failedCount: 0,
 };
 
+export type RagLifecycleAction = 'start' | 'restart' | 'stop' | 'none';
+
+export function decideRagLifecycle(
+  before: { enabled: boolean; rootPath?: string },
+  after: { enabled: boolean; rootPath?: string },
+  running: boolean,
+): RagLifecycleAction {
+  const configured = after.enabled && !!after.rootPath;
+  if (!configured) return running ? 'stop' : 'none';
+  if (!running) return 'start';
+  return before.rootPath !== after.rootPath ? 'restart' : 'none';
+}
+
 export class RagHost {
   private child: Electron.UtilityProcess | null = null;
   private status: RagStatus = EMPTY_STATUS;
+  private documents: RagDocumentStatus[] = [];
   private listeners = new Set<(status: RagStatus) => void>();
   private pending = new Map<string, Pending<RagStatus | RagQueryResult>>();
 
@@ -37,6 +52,14 @@ export class RagHost {
     return this.status;
   }
 
+  get currentDocuments(): RagDocumentStatus[] {
+    return this.documents.map((document) => ({ ...document }));
+  }
+
+  get isRunning(): boolean {
+    return this.child !== null;
+  }
+
   private emit(status: RagStatus): void {
     this.status = status;
     for (const listener of this.listeners) listener(status);
@@ -44,6 +67,7 @@ export class RagHost {
 
   async start(options: { indexDir: string; modelDir: string; rootPath: string }): Promise<RagStatus> {
     if (this.child) return this.status;
+    this.documents = [];
     this.emit({ ...EMPTY_STATUS, phase: 'loading', enabled: true });
     const child = utilityProcess.fork(join(__dirname, 'ragWorker.js'), [], {
       serviceName: 'MeetingCopilot Knowledge Index',
@@ -115,6 +139,7 @@ export class RagHost {
     child.kill();
     for (const pending of this.pending.values()) pending.reject(new Error('RAG worker stopped'));
     this.pending.clear();
+    this.documents = [];
     this.emit(EMPTY_STATUS);
   }
 
@@ -149,6 +174,7 @@ export class RagHost {
     if (!pending) return;
     this.pending.delete(raw.requestId);
     if (raw.type === 'ready') {
+      if (raw.documents) this.documents = raw.documents.map((document) => ({ ...document }));
       this.emit(raw.status);
       pending.resolve(raw.status);
     } else {
