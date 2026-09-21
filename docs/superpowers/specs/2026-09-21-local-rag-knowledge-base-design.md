@@ -247,4 +247,3 @@ A generated multilingual corpus exercises warm retrieval at several index sizes.
 4. Integrate deadline-bound retrieval into answer generation behind disabled defaults.
 5. Add settings, session scope, progress, errors, and answer references.
 6. Add integration, regression, performance, and packaged-build coverage.
-

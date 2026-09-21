@@ -110,15 +110,19 @@ function sourcesFor(results: ReturnType<typeof fuseAndPack>['results']): RagSour
 
 async function query(message: Extract<RagWorkerIn, { type: 'query' }>): Promise<void> {
   const started = performance.now();
-  const lexical = lexicalSearch(message.query, snapshot.chunks, Math.max(message.limit * 4, 24));
   const controller = new AbortController();
   controllers.set(message.requestId, controller);
+  const embedding = embedder && snapshot.chunks.length
+    ? embedder.embedQuery(message.query, controller.signal)
+    : null;
+  const lexical = lexicalSearch(message.query, snapshot.chunks, Math.max(message.limit * 4, 24));
   let dense: ReturnType<typeof denseSearch> = [];
   let fallback: RagQueryResult['fallback'];
   try {
-    if (!embedder || !snapshot.chunks.length) fallback = 'unavailable';
+    if (!embedding) fallback = 'unavailable';
     else {
-      const vector = await embedder.embedQuery(message.query, controller.signal);
+      const vector = await embedding;
+      if (controller.signal.aborted) return;
       dense = denseSearch(vector, snapshot.vectors, snapshot.chunks, Math.max(message.limit * 4, 24));
     }
   } catch {

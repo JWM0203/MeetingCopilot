@@ -100,6 +100,17 @@ Other title-bar controls:
 
 ---
 
+## Optional — build a local knowledge base
+
+1. Open **Settings → Local knowledge base**, choose one folder, then enable it. The pinned multilingual retrieval model downloads on first enable and is cached under `<userData>/models/rag/`.
+2. Click **Rescan**. PDF, DOCX, TXT, Markdown and `.markdown` files are parsed, chunked and embedded locally. Later scans hash each file and only reprocess additions or changes, so a folder with hundreds of files does not need a full rebuild.
+3. In the session toolbar, open **Library off** and choose **Entire library** or **Selected items**. This scope belongs only to that session; paths saved in the session file are relative to the chosen root.
+4. Ask normally. When retrieved material was used, expand **References** below the completed answer to inspect the source path, relevance and short excerpt.
+
+Privacy boundary: parsing, embeddings, index files and retrieval stay on this computer. Only the few matched snippets for the current question are sent to the remote LLM you configured. The model cache lives under `<userData>/models/rag/`; the versioned index lives under `<userData>/knowledge-v1/` and is not bundled into the installer.
+
+An image-only/scanned PDF has no text layer and is listed as a per-file error without blocking other documents. Use a text/OCR version, then rescan. **Rebuild index** clears incompatible or damaged shards and processes every file again; deleting `<userData>/knowledge-v1/` while MeetingCopilot is closed is the manual equivalent. Your original documents are never deleted.
+
 ## Lost the window?
 
 The main window deliberately stays out of the taskbar, so after hiding it there are two ways back:

@@ -897,7 +897,7 @@ git commit -m "feat: add per-session RAG scope and answer references"
 - Consumes: the complete RAG feature.
 - Produces: repeatable retrieval benchmarks, packaged-worker/model-cache checks, user documentation, and final evidence that old tests still pass.
 
-- [ ] **Step 1: Add a deterministic retrieval performance test**
+- [x] **Step 1: Add a deterministic retrieval performance test**
 
 Generate 20,000 normalized 384-dimensional vectors and matching multilingual chunks with a fixed seeded PRNG. Warm once, execute 100 searches, and assert exact dense search plus fusion stays below a conservative 250 ms per query in the test environment. Mark the assertion with its corpus size and do not include model download or cold model load in this unit benchmark.
 
@@ -908,7 +908,7 @@ it('searches a 20k-chunk warm matrix within the retrieval budget', () => {
 });
 ```
 
-- [ ] **Step 2: Add the end-to-end benchmark command**
+- [x] **Step 2: Add the end-to-end benchmark command**
 
 Add:
 
@@ -918,15 +918,15 @@ Add:
 
 The script requires `MC_RAG_BENCHMARK=1`, loads the cached model, indexes a generated Chinese/English corpus, runs 100 warm queries, and prints JSON containing model load, indexing throughput, query embedding P50/P95, dense P50/P95, lexical P50/P95, and total P50/P95. Exit nonzero when total P95 exceeds 300 ms. Without the environment variable, print the exact opt-in command and exit zero.
 
-- [ ] **Step 3: Verify packaged worker and resource layout**
+- [x] **Step 3: Verify packaged worker and resource layout**
 
 Ensure `out/main/ragWorker.js` is included by the existing `out/**` rule and Transformers/ONNX remain covered by `asarUnpack`. Extend packaged smoke to assert the worker exists, launch with RAG disabled, and verify no `knowledge-v1` scan is started. Do not bundle the model cache into the installer.
 
-- [ ] **Step 4: Document setup, privacy, and recovery in both languages**
+- [x] **Step 4: Document setup, privacy, and recovery in both languages**
 
 Document folder selection, first model download, supported files, global versus per-session scope, references, incremental scans, image-only PDF behavior, rebuild, data location, deleting `knowledge-v1`, and the remote-LLM snippet disclosure. Keep English and Chinese guides structurally equivalent.
 
-- [ ] **Step 5: Run focused RAG tests**
+- [x] **Step 5: Run focused RAG tests**
 
 Run:
 
@@ -936,7 +936,7 @@ npx vitest run test/ragChunker.spec.ts test/ragRetrieval.spec.ts test/ragStore.s
 
 Expected: PASS.
 
-- [ ] **Step 6: Run the complete project verification**
+- [x] **Step 6: Run the complete project verification**
 
 Run:
 
@@ -949,7 +949,7 @@ npm run smoke:packaged
 
 Expected: all pre-existing and new tests pass; TypeScript compiles; renderer/main/preload build succeeds; unpacked application starts through both smoke paths.
 
-- [ ] **Step 7: Run the real model and performance smoke on the reference machine**
+- [x] **Step 7: Run the real model and performance smoke on the reference machine**
 
 Run in PowerShell:
 
@@ -960,20 +960,20 @@ $env:MC_RAG_BENCHMARK='1'; npm run benchmark:rag
 
 Expected: model vectors are finite and 384-dimensional; benchmark JSON reports warm total retrieval P95 `<= 300` ms. If the performance gate fails, optimize allocation/batching within the retrieval implementation before proceeding; do not weaken or remove the threshold.
 
-- [ ] **Step 8: Build the Windows installer and portable application**
+- [x] **Step 8: Build the Windows installer and portable application**
 
 Run: `npm run dist:win`
 
 Expected: NSIS and portable artifacts are created under `release/`, start successfully, preserve RAG-disabled behavior, and can download/cache the model only after explicit enablement.
 
-- [ ] **Step 9: Commit Task 9**
+- [x] **Step 9: Commit Task 9**
 
 ```bash
 git add test/ragPerformance.spec.ts tools/rag-benchmark.mjs package.json electron-builder.yml tools/packaged-smoke.mjs README.md README.zh-CN.md docs/user/QUICK_START.en.md docs/user/QUICK_START.zh-CN.md docs/user/TROUBLESHOOTING.en.md docs/user/TROUBLESHOOTING.zh-CN.md
 git commit -m "docs: validate and document local RAG knowledge base"
 ```
 
-- [ ] **Step 10: Inspect the final branch diff**
+- [x] **Step 10: Inspect the final branch diff**
 
 Run:
 

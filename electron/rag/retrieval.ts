@@ -23,6 +23,19 @@ function terms(text: string): string[] {
   return [...latin, ...cjk];
 }
 
+const chunkTermFrequencies = new WeakMap<RagChunk, ReadonlyMap<string, number>>();
+
+function frequenciesFor(chunk: RagChunk): ReadonlyMap<string, number> {
+  const cached = chunkTermFrequencies.get(chunk);
+  if (cached) return cached;
+  const frequencies = new Map<string, number>();
+  for (const term of terms(`${chunk.relativePath} ${chunk.text}`)) {
+    frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
+  }
+  chunkTermFrequencies.set(chunk, frequencies);
+  return frequencies;
+}
+
 export function lexicalSearch(
   query: string,
   chunks: readonly RagChunk[],
@@ -35,10 +48,7 @@ export function lexicalSearch(
 
   return chunks
     .map((chunk) => {
-      const seen = new Map<string, number>();
-      for (const term of terms(`${chunk.relativePath} ${chunk.text}`)) {
-        seen.set(term, (seen.get(term) ?? 0) + 1);
-      }
+      const seen = frequenciesFor(chunk);
       let score = 0;
       for (const [term, queryCount] of wanted) {
         const count = seen.get(term) ?? 0;

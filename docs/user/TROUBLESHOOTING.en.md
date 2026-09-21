@@ -90,6 +90,15 @@ If another app already owns that hotkey, registration fails silently — the tra
 
 ---
 
+## 9. The local knowledge base is empty, slow, or failed
+
+- **First enable stays on downloading/loading:** the pinned multilingual embedding model is downloaded once to `<userData>/models/rag/`. Check the network and free disk space, then disable and re-enable to retry. This download starts only after explicit enablement.
+- **A scanned PDF fails:** image-only PDFs have no text layer. Replace it with a text/OCR PDF; other files continue indexing.
+- **New or edited files do not appear:** click **Rescan**. Scans are incremental by content hash. Use **Rebuild index** only after a model/schema change or suspected corruption.
+- **Index remains unavailable/corrupt:** quit MeetingCopilot, delete `<userData>/knowledge-v1/`, restart, enable the library and rescan. This deletes only generated index shards, never source documents.
+- **Answers ignore the library:** confirm the global library is enabled and ready, then set this session from **Library off** to **Entire library** or **Selected items**. Each session has an independent scope.
+- **Privacy:** document parsing, embeddings and retrieval are local. Only matched snippets are appended to a question sent to your configured remote LLM. Diagnostics exclude roots, file names, relative paths and excerpts.
+
 ## Still stuck
 
 1. Settings → Advanced → "Diagnostics" → "Copy diagnostics". The report is built locally and contains **no API keys, resume/JD text or transcripts**, so it is safe to paste into a public issue.

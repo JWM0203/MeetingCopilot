@@ -81,6 +81,7 @@ You can reopen the wizard any time from *⚙ Settings → Run the setup wizard a
 - 🌐 **Fully English or Chinese interface** — every label, tooltip, dialog and status message is available in both languages. Switch under *Settings → Appearance → UI Language*; first launch follows your OS language automatically. UI language and answer language are independent, so you can run an English UI while reading Chinese answers, or vice versa.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
 - 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing is local and deterministic, nothing gets uploaded. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
+- 📚 **Local hybrid RAG knowledge base** — index hundreds of PDF, DOCX, TXT and Markdown files incrementally, then choose the whole library or specific folders/files per session. Parsing, multilingual embeddings and retrieval stay local; completed answers show collapsible references.
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
 - 🚀 **Prefix-cache prewarm** — pressing ▶ fires a 1-token request that pre-builds the LLM provider's KV prefix cache, so the first real answer prefills from cache (verified via DeepSeek `prompt_cache_hit_tokens`); kept warm automatically during capture.
 - 🖼️ **Region-screenshot Q&A** — drag-select any screen region (the selection overlay itself is invisible to recording) and ask a vision model (MiMo / Gemini) about it.
@@ -174,6 +175,7 @@ Place [`onnx-community/whisper-large-v3-turbo-ONNX`](https://huggingface.co/onnx
 - API keys are encrypted at rest with Electron `safeStorage` (Windows DPAPI / macOS Keychain) and never reach the renderer process.
 - All data (settings / sessions / materials) lives under Electron's per-user `userData` directory (`%APPDATA%/MeetingCopilot/` on Windows and `~/Library/Application Support/MeetingCopilot/` on macOS). No telemetry, no accounts, no server.
 - With the local ASR backends, audio never leaves your machine; with BYOK LLMs, transcripts go only to the provider you configured.
+- Knowledge-base parsing, embeddings, indexes and retrieval stay on-device. Only the small snippets selected for the current question are sent to your configured answer model; the absolute library path and full documents are not sent.
 - The diagnostics report is built locally and contains no keys, transcripts or resume text — it is safe to paste into a public issue.
 
 ## Development

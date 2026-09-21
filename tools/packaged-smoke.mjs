@@ -43,10 +43,12 @@ import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmS
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { listPackage } from '@electron/asar';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exePath = join(repoRoot, 'release', 'win-unpacked', 'MeetingCopilot.exe');
 const logPath = join(repoRoot, 'release', 'packaged-smoke.log');
+const asarPath = join(repoRoot, 'release', 'win-unpacked', 'resources', 'app.asar');
 
 const BOOT_TIMEOUT_MS = 30_000;
 const LLM_MARKER = '[e2e-llm]';
@@ -72,6 +74,11 @@ function fail(message, extra) {
 
 if (!existsSync(exePath)) {
   fail(`not built: ${exePath}\nRun \`npm run dist:dir\` first.`);
+}
+if (!existsSync(asarPath)) fail(`package archive is missing: ${asarPath}`);
+const packagedFiles = listPackage(asarPath).map((entry) => entry.replace(/\\/g, '/'));
+if (!packagedFiles.some((entry) => entry.endsWith('/out/main/ragWorker.js'))) {
+  fail('out/main/ragWorker.js is missing from app.asar');
 }
 
 mkdirSync(dirname(logPath), { recursive: true });
@@ -176,6 +183,9 @@ function check(run, { readyMarkers, forbiddenMarkers }) {
   const written = existsSync(run.userData) ? readdirSync(run.userData) : [];
   if (written.length === 0) {
     fail(`[${run.name}] MC_USERDATA was ignored — nothing written to ${run.userData}`, tail);
+  }
+  if (existsSync(join(run.userData, 'knowledge-v1'))) {
+    fail(`[${run.name}] RAG is disabled but knowledge-v1 was created`, tail);
   }
   console.log(`[smoke] ${run.name}: ok (${written.length} userData entries)`);
   rmSync(run.userData, { recursive: true, force: true });
