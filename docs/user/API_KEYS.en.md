@@ -36,7 +36,7 @@ These are the same steps the in-app help center and the setup wizard show.
 
 ### DeepSeek (recommended for AI answers)
 
-Used for: AI answers and inline transcript translation. Default model `deepseek-chat` (non-thinking mode, fastest first token).
+Used for: AI answers and inline transcript translation. Default model `deepseek-flash` (the app pins thinking mode off for this model, fastest first token).
 
 1. Open the [DeepSeek open platform](https://platform.deepseek.com/).
 2. Sign in with your phone number or email; create an account on first use.
@@ -51,7 +51,7 @@ Common problems:
 - `Insufficient Balance`: the key is valid, the account just needs a top-up.
 - The key is shown once: if you lost it, delete it and create another — the account is unaffected.
 
-Model options: `deepseek-chat` (fast, default), `deepseek-v4-flash` (reasoning chain first, slower first token), `deepseek-v4-pro` (strongest reasoning; good for review, not for snap answers).
+Model options: `deepseek-flash` (fast non-thinking, default), `deepseek-v4-flash` (thinking mode pinned on — reasoning chain first, slower first token), `deepseek-v4-pro` (strongest reasoning; good for review, not for snap answers).
 
 ### Alibaba Cloud Model Studio · mainland (recommended for live ASR)
 

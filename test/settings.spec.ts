@@ -35,7 +35,7 @@ describe('SettingsStore', () => {
   it('boots with defaults when no file exists', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data).toEqual(defaultSettings());
-    expect(s.data.llm.model).toBe('deepseek-chat');
+    expect(s.data.llm.model).toBe('deepseek-flash');
     expect(s.data.llm.answerLang).toBe('chinese');
     expect(s.data.ui.stealth).toBe(true);
     // v2: a brand new profile has never seen the wizard
@@ -194,6 +194,18 @@ describe('SettingsStore', () => {
     s.applyPatch({ llm: { model: 'deepseek-v4-pro' } });
     expect(s.getLlmApiKey()).toBe('sk-1');
     expect(s.data.llm.model).toBe('deepseek-v4-pro');
+  });
+
+  it('rewrites DeepSeek aliases retired on 2026-07-24 to their current names', () => {
+    const load = (model: string, baseUrl = 'https://api.deepseek.com/v1') => {
+      writeFileSync(file, JSON.stringify({ version: 2, llm: { baseUrl, model } }), 'utf8');
+      return new SettingsStore(file, fakeCipher).data.llm.model;
+    };
+    expect(load('deepseek-chat')).toBe('deepseek-flash');
+    expect(load('deepseek-reasoner')).toBe('deepseek-v4-flash');
+    // current ids and a relay reusing the retired string are left alone
+    expect(load('deepseek-flash')).toBe('deepseek-flash');
+    expect(load('deepseek-chat', 'https://relay.example.com/v1')).toBe('deepseek-chat');
   });
 
   it('round-trips the macOS input device used for the other-party channel', () => {
