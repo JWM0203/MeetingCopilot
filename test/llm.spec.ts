@@ -7,6 +7,7 @@ import {
   toProxyRules,
   chatOnce,
   chatStream,
+  thinkingBody,
   type ChatMessage,
 } from '../electron/llm/adapter';
 import {
@@ -464,6 +465,24 @@ describe('clampTranscript', () => {
   });
 });
 
+describe('thinkingBody', () => {
+  it('defaults DeepSeek Flash to disabled and other models to unset', () => {
+    expect(thinkingBody({ model: 'deepseek-flash' })).toEqual({ thinking: { type: 'disabled' } });
+    expect(thinkingBody({ model: 'deepseek-v4-flash' })).toEqual({ thinking: { type: 'disabled' } });
+    expect(thinkingBody({ model: 'deepseek-v4-pro' })).toEqual({});
+    expect(thinkingBody({ model: 'mimo-v2.5-pro' })).toEqual({});
+  });
+
+  it('lets an explicit preference win over the Flash default', () => {
+    expect(thinkingBody({ model: 'deepseek-flash', thinking: true })).toEqual({
+      thinking: { type: 'enabled' },
+    });
+    expect(thinkingBody({ model: 'deepseek-v4-pro', thinking: false })).toEqual({
+      thinking: { type: 'disabled' },
+    });
+  });
+});
+
 describe('chatStream (mock OpenAI-compatible server)', () => {
   let server: Server;
   let baseUrl: string;
@@ -539,6 +558,27 @@ describe('chatStream (mock OpenAI-compatible server)', () => {
     expect(lastReq.body.model).toBe('deepseek-v4-flash');
     expect(lastReq.body.stream).toBe(true);
     expect(lastReq.body.messages).toEqual(msgs);
+    // deepseek-v4-flash is a Flash model, so thinking is pinned off by default
+    expect(lastReq.body.thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('pins thinking off for Flash and on for the thinking preset, over the wire', async () => {
+    behavior = 'stream';
+    await chatStream({ ...cfg(), model: 'deepseek-flash' }, msgs, { onDelta: () => {} });
+    expect(lastReq.body.thinking).toEqual({ type: 'disabled' });
+
+    await chatStream(
+      { ...cfg(), model: 'deepseek-v4-flash', thinking: true },
+      msgs,
+      { onDelta: () => {} },
+    );
+    expect(lastReq.body.thinking).toEqual({ type: 'enabled' });
+  });
+
+  it('omits the thinking parameter for a non-Flash model', async () => {
+    behavior = 'json';
+    await chatOnce({ ...cfg(), model: 'deepseek-v4-pro' }, msgs);
+    expect(lastReq.body).not.toHaveProperty('thinking');
   });
 
   it('passes multimodal content through unchanged (vision payloads)', async () => {

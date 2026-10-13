@@ -8,6 +8,11 @@ export interface LlmConfig {
   baseUrl: string; // e.g. https://api.deepseek.com/v1
   model: string;
   apiKey: string;
+  /**
+   * DeepSeek thinking mode. undefined leaves the provider default; the catalog
+   * pins false for the fast preset and true for the thinking preset.
+   */
+  thinking?: boolean;
 }
 
 export type ChatContentPart =
@@ -69,6 +74,24 @@ export function extractDelta(payload: string): string {
   }
 }
 
+/**
+ * DeepSeek's thinking mode defaults to ON and streams a long reasoning_content
+ * chain before the first answer token. The Flash models are the low-latency
+ * option, so callers that do not state a preference get thinking OFF. An
+ * explicit `config.thinking` always wins — the catalog's thinking preset passes
+ * true to keep the reasoning chain.
+ */
+const DEEPSEEK_FLASH_MODEL = /^deepseek-(?:v4-)?flash$/;
+
+/** Request-body fragment for the DeepSeek thinking toggle; {} = provider default. */
+export function thinkingBody(
+  config: Pick<LlmConfig, 'model' | 'thinking'>,
+): Record<string, unknown> {
+  const thinking =
+    config.thinking ?? (DEEPSEEK_FLASH_MODEL.test(config.model) ? false : undefined);
+  return thinking === undefined ? {} : { thinking: { type: thinking ? 'enabled' : 'disabled' } };
+}
+
 /** Extract the full message content from a non-streamed OpenAI-compatible reply. */
 export function extractMessageText(jsonBody: string): string {
   try {
@@ -120,6 +143,7 @@ export async function chatOnce(
       stream: false,
       temperature: opts?.temperature ?? 0.5,
       ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      ...thinkingBody(config),
     }),
     signal: opts?.signal,
   });
@@ -156,6 +180,7 @@ export async function chatStream(
       messages,
       stream: true,
       temperature: 0.5,
+      ...thinkingBody(config),
     }),
     signal,
   });

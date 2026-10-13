@@ -53,6 +53,7 @@ import {
   clampMemo,
 } from './llm/prompts';
 import type { AppInfo, PublicSettings, UiLang } from '../shared/protocol';
+import { thinkingForEndpoint } from '../shared/providerCatalog';
 import {
   IPC,
   type AsrEvent,
@@ -540,6 +541,17 @@ function bootstrap(): void {
       });
     }
 
+    /** text-LLM request config; the matched catalog preset decides thinking. */
+    const textLlmConfig = (apiKey: string) => {
+      const thinking = thinkingForEndpoint(settings.data.llm.baseUrl, settings.data.llm.model);
+      return {
+        baseUrl: settings.data.llm.baseUrl,
+        model: settings.data.llm.model,
+        apiKey,
+        ...(thinking !== undefined ? { thinking } : {}),
+      };
+    };
+
     // ---- IPC ----
     ipcMain.on(IPC.capturePcm, (_e, buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me') => {
       asr.sendPcm(buf, captureTs, channel === 'me' ? 'me' : 'them');
@@ -569,7 +581,7 @@ function bootstrap(): void {
       lastPrefixActivity = Date.now();
       try {
         const r = await chatOnce(
-          { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+          textLlmConfig(apiKey),
           buildPrewarmMessages(prefix),
           { maxTokens: 1 },
         );
@@ -986,7 +998,7 @@ function bootstrap(): void {
             return { text };
           })
         : chatStream(
-            { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+            textLlmConfig(apiKey),
             messages,
             { onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }) },
             ac.signal,
@@ -1024,7 +1036,7 @@ function bootstrap(): void {
         if (!apiKey) return '';
         try {
           const r = await chatOnce(
-            { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+            textLlmConfig(apiKey),
             buildMemoUpdateMessages(p.memo ?? '', p.question ?? '', p.answer ?? ''),
             { maxTokens: 700, temperature: 0.2 },
           );
@@ -1042,7 +1054,7 @@ function bootstrap(): void {
       const apiKey = settings.getLlmApiKey();
       if (!apiKey) throw new Error(T().noApiKeyShort);
       const r = await chatStream(
-        { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+        textLlmConfig(apiKey),
         buildTranslateMessages(text),
         { onDelta: () => {} },
       );

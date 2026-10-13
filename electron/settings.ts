@@ -61,10 +61,11 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
-      // 'deepseek-chat' = v4-flash in NON-thinking mode (first token ~0.4 s).
-      // Plain 'deepseek-v4-flash' streams a long reasoning_content chain first
-      // — too slow for a live copilot (measured 2026-07-09).
-      model: 'deepseek-chat',
+      // 'deepseek-flash' = V4.1 Flash in NON-thinking mode (first token ~0.4 s).
+      // DeepSeek retired the 'deepseek-chat' alias on 2026-07-24; the adapter
+      // pins thinking off for this id (catalog preset deepseek.text.fast), and
+      // the slower reasoning chain stays available via the thinking preset.
+      model: 'deepseek-flash',
       answerLang: 'chinese',
       answerWithVision: false,
     },
@@ -103,6 +104,25 @@ export function apiKeyHint(plain: string): string | undefined {
 }
 
 /**
+ * DeepSeek retired the `deepseek-chat` / `deepseek-reasoner` aliases on
+ * 2026-07-24; both are now served by V4-Flash. Rewrite them on load so a
+ * profile saved before the switch keeps answering instead of failing on a dead
+ * id. `deepseek-chat` was the non-thinking default, `deepseek-reasoner` the
+ * thinking alias (the catalog's thinking preset). Only the official host is
+ * rewritten — a relay that happens to use the same model string is left alone.
+ */
+const RETIRED_DEEPSEEK_MODELS: Record<string, string> = {
+  'deepseek-chat': 'deepseek-flash',
+  'deepseek-reasoner': 'deepseek-v4-flash',
+};
+
+function remapRetiredLlmModel(llm: SettingsFile['llm']): SettingsFile['llm'] {
+  if (!/^https:\/\/api\.deepseek\.com(?:\/|$)/.test(llm.baseUrl)) return llm;
+  const replacement = RETIRED_DEEPSEEK_MODELS[llm.model];
+  return replacement ? { ...llm, model: replacement } : llm;
+}
+
+/**
  * Per-section spread merge against the defaults. Unknown keys in the stored
  * file survive (forward compatibility); missing ones get the default.
  */
@@ -110,7 +130,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
   return {
     version: 2,
     onboarding: { ...defaults.onboarding, ...raw.onboarding, schemaVersion: 1 },
-    llm: { ...defaults.llm, ...raw.llm },
+    llm: remapRetiredLlmModel({ ...defaults.llm, ...raw.llm }),
     vision: { ...defaults.vision, ...raw.vision },
     asr: {
       ...defaults.asr,

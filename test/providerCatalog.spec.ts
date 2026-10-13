@@ -8,6 +8,7 @@ import {
   findPresetById,
   presetsForCapability,
   providerIdForEndpoint,
+  thinkingForEndpoint,
   type ProviderHelp,
 } from '../shared/providerCatalog';
 
@@ -105,7 +106,13 @@ describe('providerCatalog', () => {
   it('matches the values that used to be hardcoded in SettingsPanel', () => {
     expect(findPresetById('deepseek.text.fast')).toMatchObject({
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
+      thinking: false,
+    });
+    expect(findPresetById('deepseek.text.thinking')).toMatchObject({
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-flash',
+      thinking: true,
     });
     expect(findPresetById('aliyun.cn.asr.fun-realtime')).toMatchObject({
       baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
@@ -129,8 +136,8 @@ describe('providerCatalog', () => {
   });
 
   it('resolves an endpoint pair to its provider, ignoring trailing slashes', () => {
-    expect(providerIdForEndpoint('https://api.deepseek.com/v1', 'deepseek-chat')).toBe('deepseek');
-    expect(providerIdForEndpoint('https://api.deepseek.com/v1/', 'deepseek-chat')).toBe('deepseek');
+    expect(providerIdForEndpoint('https://api.deepseek.com/v1', 'deepseek-flash')).toBe('deepseek');
+    expect(providerIdForEndpoint('https://api.deepseek.com/v1/', 'deepseek-flash')).toBe('deepseek');
     expect(
       providerIdForEndpoint('wss://dashscope.aliyuncs.com/api-ws/v1/inference', 'fun-asr-realtime'),
     ).toBe('aliyun-dashscope-cn');
@@ -138,11 +145,11 @@ describe('providerCatalog', () => {
 
   it('treats unknown or partially matching endpoints as custom', () => {
     expect(providerIdForEndpoint('https://api.deepseek.com/v1', 'some-other-model')).toBe('custom');
-    expect(providerIdForEndpoint('https://relay.example.com/v1', 'deepseek-chat')).toBe('custom');
-    expect(providerIdForEndpoint(undefined, 'deepseek-chat')).toBe('custom');
+    expect(providerIdForEndpoint('https://relay.example.com/v1', 'deepseek-flash')).toBe('custom');
+    expect(providerIdForEndpoint(undefined, 'deepseek-flash')).toBe('custom');
     expect(providerIdForEndpoint('https://api.deepseek.com/v1', undefined)).toBe('custom');
     // no substring matching: a lookalike host must not resolve to DeepSeek
-    expect(providerIdForEndpoint('https://evil.example/api.deepseek.com/v1', 'deepseek-chat')).toBe(
+    expect(providerIdForEndpoint('https://evil.example/api.deepseek.com/v1', 'deepseek-flash')).toBe(
       'custom',
     );
   });
@@ -154,5 +161,13 @@ describe('providerCatalog', () => {
     expect(
       findPresetByEndpoint('https://api.xiaomimimo.com/v1', 'mimo-v2.5-asr', 'text-llm'),
     ).toBeUndefined();
+  });
+
+  it('carries the DeepSeek thinking override through the endpoint lookup', () => {
+    expect(thinkingForEndpoint('https://api.deepseek.com/v1', 'deepseek-flash')).toBe(false);
+    expect(thinkingForEndpoint('https://api.deepseek.com/v1', 'deepseek-v4-flash')).toBe(true);
+    expect(thinkingForEndpoint('https://api.deepseek.com/v1', 'deepseek-v4-pro')).toBeUndefined();
+    // a lookalike host or unknown pair must not inherit a DeepSeek preset's mode
+    expect(thinkingForEndpoint('https://relay.example.com/v1', 'deepseek-flash')).toBeUndefined();
   });
 });

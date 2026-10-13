@@ -64,6 +64,12 @@ export interface ProviderPreset {
   baseUrl: string;
   model: string;
   region?: ProviderRegion;
+  /**
+   * DeepSeek thinking-mode override for this endpoint; undefined leaves the
+   * provider default (ON for DeepSeek). The fast preset pins false, the
+   * thinking preset pins true, so one request path serves both.
+   */
+  thinking?: boolean;
   /** default choice for its capability in the onboarding wizard */
   recommended?: boolean;
   /** unverified / partially supported — the UI must show a Beta tag */
@@ -289,13 +295,14 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     id: 'deepseek.text.fast',
     providerId: 'deepseek',
     capability: 'text-llm',
-    nameZh: 'DeepSeek 快速·非思考 (deepseek-chat)',
-    nameEn: 'DeepSeek fast · non-thinking (deepseek-chat)',
+    nameZh: 'DeepSeek 快速·非思考 (deepseek-flash)',
+    nameEn: 'DeepSeek fast · non-thinking (deepseek-flash)',
     descriptionZh: '首个字最快，适合实时会议问答，默认选择。',
     descriptionEn: 'Fastest first token; the default for live meeting answers.',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     region: 'cn',
+    thinking: false,
     recommended: true,
     help: deepseekHelp,
   },
@@ -305,11 +312,12 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     capability: 'text-llm',
     nameZh: 'DeepSeek 思考·v4-flash',
     nameEn: 'DeepSeek thinking · v4-flash',
-    descriptionZh: '带推理链，回答更完整，但首字更慢。',
-    descriptionEn: 'Reasoning chain first — richer answers, slower first token.',
+    descriptionZh: '显式开启思考模式，带推理链，回答更完整，但首字更慢。',
+    descriptionEn: 'Thinking mode pinned on — reasoning chain, richer answers, slower first token.',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-v4-flash',
     region: 'cn',
+    thinking: true,
     help: deepseekHelp,
   },
   {
@@ -488,6 +496,18 @@ export function providerIdForEndpoint(
   capability?: ProviderCapability,
 ): ProviderId {
   return findPresetByEndpoint(baseUrl, model, capability)?.providerId ?? 'custom';
+}
+
+/**
+ * Thinking-mode override for a stored baseUrl+model pair, or undefined to let
+ * the provider default apply. Only presets that need an explicit override set
+ * the field, so non-DeepSeek endpoints stay untouched.
+ */
+export function thinkingForEndpoint(
+  baseUrl: string | undefined,
+  model: string | undefined,
+): boolean | undefined {
+  return findPresetByEndpoint(baseUrl, model, 'text-llm')?.thinking;
 }
 
 function normalizeBaseUrl(url: string): string {
