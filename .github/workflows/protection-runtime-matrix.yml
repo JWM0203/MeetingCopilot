@@ -33,3 +33,16 @@ jobs:
           name: runtime-protection-matrix
           path: release/smoke/runtime-protection-matrix/
           retention-days: 14
+      - name: Transparent lifecycle and visual-preservation matrix
+        if: always()
+        run: node tools/desktop-capture/runtime-matrix.mjs --transparent-lifecycle
+      - name: Package transparent lifecycle native frames
+        if: always()
+        continue-on-error: true
+        run: python tools/desktop-capture/analyze.py release/smoke/transparent-lifecycle-matrix
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: transparent-lifecycle-matrix
+          path: release/smoke/transparent-lifecycle-matrix/
+          retention-days: 14

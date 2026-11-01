@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { _electron } from 'playwright';
 import { isolatedEnvironment } from '../smoke-verdict.mjs';
-const root=resolve(import.meta.dirname,'../..'),output=join(root,'release/smoke/runtime-protection-matrix');
+const lifecycleMode=process.argv.includes('--transparent-lifecycle');
+const root=resolve(import.meta.dirname,'../..'),output=join(root,'release/smoke',lifecycleMode?'transparent-lifecycle-matrix':'runtime-protection-matrix');
 rmSync(output,{recursive:true,force:true});mkdirSync(output,{recursive:true});
 const profile=mkdtempSync(join(tmpdir(),'mc-protection-matrix-'));
 writeFileSync(join(profile,'settings.json'),JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',stealth:false,opacity:1,autoLaunch:false,hotkeyToggle:'',hotkeyShot:''}}));
-const report={purpose:'Identify dynamic setter behavior vs window configuration; not a universal capture/privacy pass',backend:'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)',events:[],cases:[],getLastError:'Unavailable for Electron internal SetWindowDisplayAffinity: it executes on another thread/process. Never substitute this recorder process GetLastError as setter evidence.'};
+const report={mode:lifecycleMode?'transparent-lifecycle':'window-configuration',purpose:'Identify dynamic setter behavior vs window configuration; not a universal capture/privacy pass',backend:'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)',events:[],cases:[],getLastError:'Unavailable for Electron internal SetWindowDisplayAffinity: it executes on another thread/process. Never substitute this recorder process GetLastError as setter evidence.'};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const wait=async(fn,label,ms=12000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await sleep(80);}throw new Error(label);};
 const native=handle=>JSON.parse(execFileSync('powershell.exe',['-NoProfile','-File',join(import.meta.dirname,'native.ps1'),'-Mode','Affinity','-Handle',handle],{encoding:'utf8',timeout:8000}));
@@ -42,7 +43,13 @@ try{
   mainCase.observations.push(await observe(report.host.mainId,'production-direct-'+(requested?'ON':'OFF'),{requested,call}));
  }
  await app.evaluate(({BrowserWindow},id)=>BrowserWindow.fromId(id).hide(),report.host.mainId);
- const cases=[
+ const cases=lifecycleMode?[
+  {name:'transparent-default-visible-initial-ON',transparent:true,frame:false,alwaysOnTop:true,opacity:1,initialVisible:true,initialProtection:true},
+  {name:'transparent-show-before-load-initial-ON',transparent:true,frame:false,alwaysOnTop:true,opacity:1,showBeforeLoad:true,initialProtection:true},
+  {name:'transparent-show-after-load-initial-ON',transparent:true,frame:false,alwaysOnTop:true,opacity:1,initialProtection:true},
+  {name:'transparent-runtime-opacity-one',transparent:true,frame:false,alwaysOnTop:true,opacity:1,refreshOpacity:[1]},
+  {name:'transparent-runtime-opacity-reset',transparent:true,frame:false,alwaysOnTop:true,opacity:1,refreshOpacity:[.999,1]},
+ ]:[
   {name:'opaque-framed-normal',transparent:false,frame:true,alwaysOnTop:false,opacity:1},
   {name:'opaque-frameless-top',transparent:false,frame:false,alwaysOnTop:true,opacity:1},
   {name:'transparent-frameless-normal',transparent:true,frame:false,alwaysOnTop:false,opacity:1},
@@ -51,11 +58,15 @@ try{
  ];
  for(const config of cases){
   const id=await app.evaluate(async({BrowserWindow},c)=>{
-   const w=new BrowserWindow({x:150,y:150,width:640,height:400,show:false,frame:c.frame,transparent:c.transparent,alwaysOnTop:c.alwaysOnTop,skipTaskbar:true,backgroundColor:c.transparent?'#00000000':'#233344',webPreferences:{contextIsolation:true}});
-   w.setContentProtection(false);if(c.opacity!==1)w.setOpacity(c.opacity);
-   await w.loadURL('data:text/html,'+encodeURIComponent(`<body style="margin:0;background:#233344;color:white;font:24px sans-serif"><h2>${c.name}</h2><p>PUBLIC_MATRIX_CANARY</p><div style="background:#ff00ff;color:black;height:50px">PUBLIC_MATRIX_CANARY</div></body>`));w.show();w.focus();return w.id;
-  },config);
-  const c={name:config.name,options:config,id,observations:[]};report.cases.push(c);c.observations.push(await observe(id,config.name+'-initial-OFF'));
+   const w=new BrowserWindow({x:150,y:150,width:640,height:400,show:c.initialVisible===true,hasShadow:false,frame:c.frame,transparent:c.transparent,alwaysOnTop:c.alwaysOnTop,skipTaskbar:true,backgroundColor:c.transparent?'#00000000':'#233344',webPreferences:{contextIsolation:true}});
+   w.setContentProtection(c.initialProtection??false);if(c.opacity!==1)w.setOpacity(c.opacity);if(c.showBeforeLoad)w.show();
+   await w.loadURL('data:text/html,'+encodeURIComponent(c.lifecycle?'<body style="margin:0;background:transparent;color:white;font:24px sans-serif"><div style="height:90px;background:rgba(35,51,68,.5);padding:16px;box-sizing:border-box">PUBLIC_MATRIX_TEXT_WHITE</div><div style="position:absolute;left:20px;top:140px;width:320px;height:50px;background:#ff00ff;color:black">PUBLIC_MATRIX_CANARY</div></body>':`<body style="margin:0;background:#233344;color:white;font:24px sans-serif"><h2>${c.name}</h2><p>PUBLIC_MATRIX_CANARY</p><div style="background:#ff00ff;color:black;height:50px">PUBLIC_MATRIX_CANARY</div></body>`));w.show();w.focus();return w.id;
+  },{...config,lifecycle:lifecycleMode});
+  const c={name:config.name,options:config,id,observations:[]};report.cases.push(c);c.observations.push(await observe(id,config.name+'-initial-'+(config.initialProtection?'ON':'OFF')));
+  if(config.refreshOpacity){
+   const refresh=await app.evaluate(({BrowserWindow},{id,values})=>{const w=BrowserWindow.fromId(id);for(const value of values)w.setOpacity(value);return{opacity:w.getOpacity(),protected:w.isContentProtected()};},{id,values:config.refreshOpacity});
+   c.observations.push(await observe(id,config.name+'-after-visual-refresh',{refresh,visualComparisonRequired:true}));
+  }
   for(const requested of [true,false,true,false]){
    const call=await app.evaluate(({BrowserWindow},{id,requested})=>{const w=BrowserWindow.fromId(id);try{w.setContentProtection(requested);return{actual:w.isContentProtected()};}catch(e){return{error:e.message,actual:w.isContentProtected()};}},{id,requested});
    c.observations.push(await observe(id,config.name+'-'+(requested?'ON':'OFF'),{requested,call}));
