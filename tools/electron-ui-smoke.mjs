@@ -228,11 +228,13 @@ try {
     await button('Settings').click();
     const enable = page.getByRole('checkbox', { name: 'Enable local knowledge', exact: true });
     assert.equal(await enable.isChecked(), false);
-    await enable.check();
+    await enable.click();
+    await poll(() => enable.isChecked(), 'RAG enable IPC acknowledged');
     await button('Rebuild index / Retry').click();
     await page.getByText('Building local index', { exact: true }).waitFor();
     assert.equal(await enable.isEnabled(), true);
-    await enable.uncheck();
+    await enable.click();
+    await poll(async () => !await enable.isChecked(), 'RAG disable IPC acknowledged');
     await page.locator('.rag-settings').getByText('Disabled', { exact: true }).waitFor();
     await app.evaluate(() => { globalThis.__uiFixture.pendingScan({ phase: 'ready', fileCount: 99, chunkCount: 99, failedCount: 0 }); });
     // Await observable completion of the pending invoke rather than arbitrary UI timing.
@@ -240,7 +242,8 @@ try {
     assert.equal(await enable.isChecked(), false);
     assert.equal(await page.locator('.rag-settings').getByText('Index ready', { exact: true }).count(), 0);
     await shot('08-rag-disabled-during-index-mock');
-    await enable.check();
+    await enable.click();
+    await poll(() => enable.isChecked(), 'RAG enable IPC acknowledged');
     await button('Cancel').click();
     await button('📚 Library').click();
     await page.locator('dialog[open]').waitFor();
