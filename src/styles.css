@@ -1074,3 +1074,23 @@ body {
 .answer-sources { font-size: 12px; color: var(--text-muted); margin: 6px 0; overflow-wrap: anywhere; }
 .answer-sources summary { cursor: pointer; }
 .answer-sources ul { padding-left: 20px; }
+
+/* Render hints inside the app surface, not Chromium's separate native tooltip. */
+.surface-hint {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  max-width: min(280px, calc(100vw - 16px));
+  max-height: 80px;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding: 6px 9px;
+  border: 1px solid #7b8394;
+  border-radius: 5px;
+  background: #20242e;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px #0004;
+}

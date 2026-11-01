@@ -16,3 +16,15 @@ The automated desktop workflow tests Linux, Windows Server and macOS builds, sta
 A workflow definition is not a passing result. Require green checks for the exact source commit before publication. Windows Server is not Windows 11. Signing/notarization, physical microphone/system audio, BlackHole, OS permission dialogs, real meeting screen sharing and paid provider/model accuracy require separate verification. No anti-monitoring or exam-proctoring bypass is promised.
 
 Never attach API keys, personal settings, transcripts, documents, model caches or raw private logs to issues or CI artifacts. No real provider credentials are included in source tests.
+
+## Hover hints and capture privacy
+
+The reported hover phrase “让 AI 帮我回答这句” matched a native HTML `title` popup. The main overlay now renders hints within its own web surface instead of requesting a separate native tooltip. Accessible control names and keyboard-focus hints remain; Escape, scrolling, clicking, window blur and dismissal clear pending hints. This removes that native-popup path but has not yet been verified against every meeting or recording application.
+
+Capture protection is best-effort, not invisibility. Cursor composition and focus-switch notifications are separate from window pixels; opening the screenshot selector or another window can legitimately change focus. This change does not hide cursors, falsify focus or bypass platform monitoring. A black region can depend on Windows version and capture API and must be reproduced separately.
+
+Electron documents that Windows 10 before version 2004 may capture a black window instead of excluding it, and a new protection setting takes effect on the next desktop composition. On macOS, ScreenCaptureKit applications may capture a window despite `setContentProtection(true)`. Native file dialogs and other windows are not automatically protected by the main window setting. Before sharing sensitive notes, test the exact app/version and capture mode with harmless sample content and review the recipient view/recording. [Electron BrowserWindow documentation](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows).
+
+The status bar now names the saved ASR backend; local mode does not use saved cloud-ASR keys. A text-LLM connection timeout does not establish an ASR endpoint fault. Cloud/CPU/local-sidecar readiness is no longer displayed as a blanket “GPU” success claim.
+
+Linux CI uses the stock Ubuntu 22.04 runner and the default Electron sandbox. Ubuntu 24.04 source startup failed with a sandbox-helper setup error; reusing its preinstalled helper also failed the root/mode safety guard. No permissions, AppArmor settings or sandbox protections were weakened. Ubuntu 22.04 still needs its own successful exact-commit boot/package result and does not prove Ubuntu 24.04 compatibility.

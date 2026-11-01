@@ -19,6 +19,7 @@
     "shared/**/*.ts",
     "test/**/*.ts",
     "src/audio/**/*.ts",
+    "src/surfaceHints.ts",
     "tools/**/*.ts",
     "electron.vite.config.ts"
   ]

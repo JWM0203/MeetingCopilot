@@ -1,3 +1,4 @@
+import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { TranscriptSegment } from '../../shared/transcript';
 import { useT } from '../i18n';
@@ -75,7 +76,7 @@ export function TranscriptPanel({
       <header className="pane-head">
         <span className="pane-title">{t.transcript.title}</span>
         <span className="pane-hint">{t.transcript.hint}</span>
-        <button className="btn btn-sm" onClick={onClear} title={t.transcript.clearTitle}>
+        <button className="btn btn-sm" onClick={onClear} {...hintProps(t.transcript.clearTitle)}>
           {t.transcript.clear}
         </button>
       </header>
@@ -89,7 +90,7 @@ export function TranscriptPanel({
               <div
                 key={s.id}
                 className={`bubble ${me ? 'bubble-me' : 'bubble-them'}`}
-                title={t.transcript.bubbleTitle}
+                {...hintProps(t.transcript.bubbleTitle)}
                 onClick={() => {
                   if (!window.getSelection()?.toString().trim()) {
                     void navigator.clipboard.writeText(s.text);
@@ -111,7 +112,7 @@ export function TranscriptPanel({
                 <div className="bubble-btns">
                   <button
                     className="bubble-ask"
-                    title={t.transcript.translateTitle}
+                    {...hintProps(t.transcript.translateTitle)}
                     onClick={(e) => {
                       e.stopPropagation();
                       onTranslate(s);
@@ -123,7 +124,7 @@ export function TranscriptPanel({
                     <button
                       className="bubble-ask"
                       disabled={!answersReady}
-                      title={answersReady ? t.transcript.answerTitle : answersHint}
+                      {...hintProps(answersReady ? t.transcript.answerTitle : answersHint)}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAsk(s.text);
@@ -170,7 +171,7 @@ export function TranscriptPanel({
           <button
             className="btn btn-sm btn-primary"
             disabled={!answersReady}
-            title={answersReady ? undefined : answersHint}
+            {...hintProps(answersReady ? undefined : answersHint)}
             onClick={answerSel}
           >
             {t.transcript.answerSelection}

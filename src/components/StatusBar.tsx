@@ -1,3 +1,5 @@
+import { hintProps } from '../surfaceHints';
+import type { PublicSettings } from '../../shared/protocol';
 import type { AsrUiState, HudStats } from '../App';
 import { chipTone, type ChipTone, type ServiceHealthReport } from '../../shared/healthState';
 import { useT } from '../i18n';
@@ -7,12 +9,14 @@ const MARK: Record<ChipTone, string> = { ok: '✓', busy: '…', bad: '!', none:
 
 export function StatusBar({
   asr,
+  backend,
   capturing,
   hud,
   health,
   onOpenHealth,
 }: {
   asr: AsrUiState;
+  backend?: PublicSettings['asr']['backend'];
   capturing: boolean;
   hud?: HudStats;
   /** absent until the settings snapshot has loaded */
@@ -23,6 +27,7 @@ export function StatusBar({
   return (
     <footer className="statusbar">
       <div className="status-left">
+        {backend && <span className="tag" {...hintProps(t.settings.asrBackendHint)}>{t.status.activeBackend}: {t.status.backends[backend]}</span>}
         {asr.phase === 'loading' && <span className="tag tag-wait">{t.status.state.loading}</span>}
         {asr.phase === 'error' && <span className="tag tag-err">{t.status.engineError}</span>}
         {asr.phase === 'ready' && (
@@ -31,18 +36,18 @@ export function StatusBar({
               {capturing ? t.status.state[asr.workerState] : t.status.idle}
             </span>
             <span className={asr.gpuSuspect ? 'tag tag-err' : 'tag tag-ok'}>
-              {asr.gpuSuspect ? t.status.gpuBad : t.status.gpuOk}
+              {asr.gpuSuspect ? t.status.gpuBad : backend === 'local-realtime' ? 'ASR' : asr.ep === 'cloud' || asr.ep === 'cloud-rt' ? 'API' : asr.ep?.toUpperCase() || 'ASR'}
             </span>
           </>
         )}
         {asr.lastError && (
-          <span className="tag tag-err" title={asr.lastError}>
+          <span className="tag tag-err" role="img" aria-label={asr.lastError} {...hintProps(asr.lastError)}>
             ⚠
           </span>
         )}
         {/* compact service health; the panel behind it carries the detail */}
         {health && (
-          <button className="health-chips" onClick={onOpenHealth} title={t.health.chipsTitle}>
+          <button className="health-chips" onClick={onOpenHealth} {...hintProps(t.health.chipsTitle)}>
             <span className={`health-chip is-${chipTone(health.asr)}`}>
               {t.health.chipAsr} {MARK[chipTone(health.asr)]}
             </span>
@@ -56,7 +61,7 @@ export function StatusBar({
         )}
       </div>
       {hud && (
-        <div className="status-hud" title={t.status.hudTitle}>
+        <div className="status-hud" {...hintProps(t.status.hudTitle)}>
           {hud.lastE2eMs !== undefined ? (
             <>
               <span>{(hud.lastE2eMs / 1000).toFixed(2)}s</span>

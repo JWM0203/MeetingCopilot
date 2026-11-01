@@ -1,3 +1,4 @@
+import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { RagDocumentStatus, RagScope } from '../../shared/rag';
 import { useT } from '../i18n';
@@ -33,7 +34,7 @@ export function KnowledgeScopeDialog({ scope, documents, onSave, onClose }: {
         <div className="rag-document-list">
           {ready.map((doc) => <label key={doc.id} className="rag-check">
             <input type="checkbox" disabled={all} checked={paths.includes(doc.relativePath)} onChange={(e) => setPaths(e.target.checked ? [...paths, doc.relativePath] : paths.filter((p) => p !== doc.relativePath))} />
-            <span title={doc.relativePath}>{doc.relativePath}</span>
+            <span {...hintProps(doc.relativePath)}>{doc.relativePath}</span>
           </label>)}
         </div>
       </fieldset>

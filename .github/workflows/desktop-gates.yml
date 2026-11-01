@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022, macos-15, macos-15-intel]
+        os: [ubuntu-22.04, windows-2022, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
@@ -39,20 +39,8 @@ jobs:
         run: npm run build
       - name: Verify transformer patch
         run: npm run verify:patched
-      # Chromium documents reusing the already-installed Chrome SUID helper as
-      # the sandbox-preserving option on Ubuntu's restricted-userns runners.
-      # Never chmod/chown a downloaded binary or disable AppArmor/the sandbox.
-      - name: Use existing trusted Linux sandbox helper
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          helper=/opt/google/chrome/chrome-sandbox
-          test -f "$helper" && test ! -L "$helper" && test -x "$helper"
-          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755' || {
-            echo 'Existing root-owned Chrome sandbox helper unavailable; no security settings were changed.' >&2
-            exit 1
-          }
-          echo "CHROME_DEVEL_SANDBOX=$helper" >> "$GITHUB_ENV"
+      # Ubuntu 22.04 uses Electron's standard sandbox. Ubuntu 24.04's stock
+      # helper/userns setup failed boot; never disable sandbox/security to pass.
       - name: Source app boot and IPC (Linux virtual display)
         if: runner.os == 'Linux'
         run: xvfb-run -a node tools/packaged-smoke.mjs --source

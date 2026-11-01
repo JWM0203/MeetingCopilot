@@ -1,3 +1,4 @@
+import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type {
   AnswerLang,
@@ -434,7 +435,7 @@ export function SettingsPanel({
           <button
             className="btn btn-sm"
             disabled={!canTest || anyTesting}
-            title={canTest ? undefined : t.settings.testNoKey}
+            {...hintProps(canTest ? undefined : t.settings.testNoKey)}
             onClick={() => void runSlotTest(slotId, target, candidate)}
           >
             {state?.testing ? t.settings.testing : t.settings.testConnection}
@@ -558,6 +559,7 @@ export function SettingsPanel({
           </optgroup>
         </select>
       </div>
+      <div className="settings-hint">{t.settings.asrBackendHint}</div>
       {asrBackend === 'local-realtime' && (
         <div className="settings-row">
           <label>{t.settings.localRtModel}</label>

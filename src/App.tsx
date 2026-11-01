@@ -1,3 +1,5 @@
+import { SurfaceHints } from './components/SurfaceHints';
+import { hintProps } from './surfaceHints';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AnswerLang,
@@ -744,6 +746,7 @@ export function App() {
 
   return (
     <I18nProvider lang={settings?.ui.lang}>
+      <SurfaceHints />
     <div className="app">
       <header className="titlebar">
         <span className="brand">MeetingCopilot</span>
@@ -752,15 +755,13 @@ export function App() {
             className={capturing ? 'btn btn-live' : 'btn btn-primary'}
             onClick={() => (capturing ? void stopCapture() : void startCapture())}
             disabled={asr.phase !== 'ready'}
-            title={
-              captureKindForPlatform(window.mc.platform) === 'loopback'
+            {...hintProps(captureKindForPlatform(window.mc.platform) === 'loopback'
                 ? capturing
                   ? t.titlebar.stopTitle
                   : t.titlebar.startTitle
                 : capturing
                   ? t.titlebar.stopInputTitle
-                  : t.titlebar.startInputTitle
-            }
+                  : t.titlebar.startInputTitle)}
           >
             {capturing ? t.titlebar.stop : t.titlebar.start}
           </button>
@@ -769,7 +770,7 @@ export function App() {
               className="mic-select"
               value={settings?.audio.themDeviceId ?? ''}
               onChange={(e) => void selectThemInput(e.target.value)}
-              title={t.titlebar.themDeviceTitle}
+              {...hintProps(t.titlebar.themDeviceTitle)} aria-label={t.titlebar.themDeviceTitle}
             >
               <option value="">{t.titlebar.themDeviceDefault}</option>
               {mics.map((m) => (
@@ -782,24 +783,24 @@ export function App() {
           <button
             className={continuous ? 'btn btn-on' : 'btn'}
             onClick={() => setContinuous((v) => !v)}
-            title={t.titlebar.continuousTitle}
+            {...hintProps(t.titlebar.continuousTitle)} aria-pressed={continuous}
           >
             {t.titlebar.continuous}
           </button>
           <button
             className={settings?.llm.answerWithVision ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleAnswerModel()}
-            title={t.titlebar.modelTitle}
+            {...hintProps(t.titlebar.modelTitle)} aria-pressed={!!settings?.llm.answerWithVision}
           >
             {settings?.llm.answerWithVision ? t.titlebar.vision : t.titlebar.textOnly}
           </button>
-          <button className="btn" onClick={() => void toggleAnswerLang()} title={t.titlebar.answerLangTitle}>
+          <button className="btn" onClick={() => void toggleAnswerLang()} {...hintProps(t.titlebar.answerLangTitle)}>
             {t.titlebar.answerLang(settings?.llm.answerLang === 'english')}
           </button>
           <button
             className={micActive ? 'btn btn-live' : 'btn'}
             onClick={() => void toggleMicCapture()}
-            title={t.titlebar.micTitle}
+            {...hintProps(t.titlebar.micTitle)} aria-pressed={micActive}
           >
             {micActive ? t.titlebar.micOn : t.titlebar.micOff}
           </button>
@@ -808,7 +809,7 @@ export function App() {
               className="mic-select"
               value={settings?.audio.micDeviceId ?? ''}
               onChange={(e) => void selectMic(e.target.value)}
-              title={t.titlebar.micDeviceTitle}
+              {...hintProps(t.titlebar.micDeviceTitle)} aria-label={t.titlebar.micDeviceTitle}
             >
               <option value="">{t.titlebar.micDefault}</option>
               {mics.map((m) => (
@@ -821,24 +822,22 @@ export function App() {
           <button
             className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleStealth()}
-            title={
-              window.mc.platform === 'darwin'
+            {...hintProps(window.mc.platform === 'darwin'
                 ? t.titlebar.stealthMacTitle
-                : t.titlebar.stealthTitle
-            }
+                : t.titlebar.stealthTitle)}
           >
             {t.titlebar.stealth(!!settings?.ui.stealth)}
           </button>
-          <button className="btn" onClick={() => setShowHud((v) => !v)} title={t.titlebar.hudTitle}>
+          <button className="btn" onClick={() => setShowHud((v) => !v)} {...hintProps(t.titlebar.hudTitle)} aria-pressed={showHud}>
             HUD
           </button>
-          <button className="btn" onClick={() => setShowSettings((v) => !v)} title={t.titlebar.settingsTitle}>
+          <button className="btn" onClick={() => setShowSettings((v) => !v)} {...hintProps(t.titlebar.settingsTitle)} aria-label={t.titlebar.settingsTitle}>
             ⚙
           </button>
-          <button className="btn" onClick={() => window.mc.hide()} title={t.titlebar.hideTitle}>
+          <button className="btn" onClick={() => window.mc.hide()} {...hintProps(t.titlebar.hideTitle)} aria-label={t.titlebar.hideTitle}>
             —
           </button>
-          <button className="btn btn-close" onClick={() => window.mc.quit()} title={t.titlebar.quitTitle}>
+          <button className="btn btn-close" onClick={() => window.mc.quit()} {...hintProps(t.titlebar.quitTitle)} aria-label={t.titlebar.quitTitle}>
             ✕
           </button>
         </div>
@@ -975,6 +974,7 @@ export function App() {
       </div>
 
       <StatusBar
+        backend={settings?.asr.backend}
         asr={asr}
         capturing={capturing}
         hud={showHud ? hud : undefined}

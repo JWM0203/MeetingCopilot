@@ -1,3 +1,4 @@
+import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { PublicSettings } from '../../shared/protocol';
 import type { RagStatus } from '../../shared/rag';
@@ -82,7 +83,7 @@ export function KnowledgeBaseSettings({ settings, onChanged }: {
         if (mounted.current) setStatus(current);
       });
     }} />{t.enable}</label>
-    <p className="rag-root" title={settings.rag.rootPath}>{settings.rag.rootPath || t.noFolder}</p>
+    <p className="rag-root" {...hintProps(settings.rag.rootPath)}>{settings.rag.rootPath || t.noFolder}</p>
     <div className="settings-actions">
       <button className="btn btn-sm" disabled={disabled} onClick={() => void run(async () => {
         const rootPath = await window.mc.chooseRagRoot();

@@ -1,3 +1,4 @@
+import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { KbSlot, StoredSession } from '../../shared/protocol';
 import { sessionText } from '../../shared/sessionActions';
@@ -129,7 +130,7 @@ export function AnswerSession({
             className="session-select"
             value={currentId}
             onChange={(e) => onSwitch(e.target.value)}
-            title={t.answer.switchTitle}
+            {...hintProps(t.answer.switchTitle)} aria-label={t.answer.switchTitle}
           >
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -144,16 +145,16 @@ export function AnswerSession({
             setNameDraft(currentName);
             setEditing(true);
           }}
-          title={t.answer.renameTitle}
+          {...hintProps(t.answer.renameTitle)} aria-label={t.answer.renameTitle}
         >
           ✎
         </button>
-        <button className="btn btn-sm" onClick={onNew} title={t.answer.newTitle}>
+        <button className="btn btn-sm" onClick={onNew} {...hintProps(t.answer.newTitle)} aria-label={t.answer.newTitle}>
           ＋
         </button>
         {onOpenRagScope && <button className="btn btn-sm" onClick={onOpenRagScope}>📚 {t.rag.library}</button>}
         {onUndoDelete && <button className="btn btn-sm" onClick={onUndoDelete}>{t.answer.undoDelete}</button>}
-        <button className="btn btn-sm" title={t.answer.exportText} onClick={() => {
+        <button className="btn btn-sm" {...hintProps(t.answer.exportText)} onClick={() => {
           const session = sessions.find((s) => s.id === currentId);
           if (!session) return;
           const url = URL.createObjectURL(new Blob([sessionText(session)], { type: "text/plain;charset=utf-8" }));
@@ -163,39 +164,37 @@ export function AnswerSession({
           link.click();
           setTimeout(() => URL.revokeObjectURL(url), 1000);
         }}>↓ TXT</button>
-        <button className="btn btn-sm" onClick={() => onDelete(currentId)} title={t.answer.deleteTitle}>
+        <button className="btn btn-sm" onClick={() => onDelete(currentId)} {...hintProps(t.answer.deleteTitle)} aria-label={t.answer.deleteTitle}>
           🗑
         </button>
         <button
           className={resumeChars > 0 ? 'btn btn-sm btn-on' : 'btn btn-sm'}
           onClick={() => onPickKb('resume')}
-          title={
-            resumeChars > 0
+          {...hintProps(resumeChars > 0
               ? t.answer.resumeSetTitle(resumeName ?? '', resumeChars)
-              : t.answer.resumeEmptyTitle
-          }
+              : t.answer.resumeEmptyTitle)}
         >
           📄{resumeChars > 0 ? resumeName ?? t.answer.resume : t.answer.resume}
         </button>
         {resumeChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('resume')} title={t.answer.resumeRemoveTitle}>
+          <button className="btn btn-sm" onClick={() => onClearKb('resume')} {...hintProps(t.answer.resumeRemoveTitle)} aria-label={t.answer.resumeRemoveTitle}>
             ×
           </button>
         )}
         <button
           className={jdChars > 0 ? 'btn btn-sm btn-on' : 'btn btn-sm'}
           onClick={() => onPickKb('jd')}
-          title={jdChars > 0 ? t.answer.jdSetTitle(jdName ?? '', jdChars) : t.answer.jdEmptyTitle}
+          {...hintProps(jdChars > 0 ? t.answer.jdSetTitle(jdName ?? '', jdChars) : t.answer.jdEmptyTitle)}
         >
           📋{jdChars > 0 ? jdName ?? t.answer.jd : t.answer.jd}
         </button>
         {jdChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('jd')} title={t.answer.jdRemoveTitle}>
+          <button className="btn btn-sm" onClick={() => onClearKb('jd')} {...hintProps(t.answer.jdRemoveTitle)} aria-label={t.answer.jdRemoveTitle}>
             ×
           </button>
         )}
         <span className="session-spacer" />
-        <button className="btn btn-sm" onClick={onClear} title={t.answer.clearTitle}>
+        <button className="btn btn-sm" onClick={onClear} {...hintProps(t.answer.clearTitle)}>
           {t.answer.clear}
         </button>
       </header>
@@ -211,7 +210,7 @@ export function AnswerSession({
             <div key={turn.id} className={`turn turn-${turn.kind}`}>
               <div className="turn-head">
                 <span className="turn-tag">{t.answer.kindTag[turn.kind]}</span>
-                <span className="turn-label" title={turn.label}>
+                <span className="turn-label" {...hintProps(turn.label)}>
                   {turn.label}
                 </span>
                 {turn.status === 'streaming' ? (
@@ -222,7 +221,7 @@ export function AnswerSession({
                   <button
                     className="btn btn-sm"
                     onClick={() => void navigator.clipboard.writeText(turn.text)}
-                    title={t.answer.copyTitle}
+                    {...hintProps(t.answer.copyTitle)}
                   >
                     {t.answer.copy}
                   </button>
@@ -263,7 +262,7 @@ export function AnswerSession({
         <button
           className="btn btn-primary"
           disabled={!answersReady}
-          title={answersReady ? undefined : answersHint}
+          {...hintProps(answersReady ? undefined : answersHint)}
           onClick={submit}
         >
           {t.answer.ask}
@@ -271,7 +270,7 @@ export function AnswerSession({
         {visionReady && (
           <button
             className="btn"
-            title={t.answer.shotTitle}
+            {...hintProps(t.answer.shotTitle)} aria-label={t.answer.shotTitle}
             onClick={async () => {
               const q = inputRef.current?.value.trim() ?? '';
               const sid = currentId;
