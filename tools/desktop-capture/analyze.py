@@ -39,11 +39,13 @@ try:
     if not run.get('sequenceCompleted') or run.get('error') or run.get('cleanupError') or max(gaps)>250:
         report['verdict']='INCONCLUSIVE';report['reason']='sequence/cleanup failed or capture gap over 250 ms; inspect evidence'
 except Exception as e:
-    report['reason']=str(e)
+    report['reason']=f'{type(e).__name__}: {str(e) or "required capture phase absent"}'
+    if 'run' in locals():report['runError']=run.get('error')
 # Always retain available raw capture evidence, including failed controls.
 try:
     host=load('native.json');frames=[json.loads(l) for l in (out/'frames.jsonl').read_text(encoding='utf-8-sig').splitlines()]
     w,h=host['width'],host['height'];n=len(frames)
+    report.setdefault('frameCount',n);report.setdefault('native',host)
     us=max(1,round((frames[-1]['endMs']-frames[0]['startMs'])*1000/n))
     avih=struct.pack('<14I',us,0,0,0x10,n,0,1,w*h*3,w,h,0,0,0,0)
     strh=struct.pack('<4s4sIHHIIIIIIIIhhhh',b'vids',b'MJPG',0,0,0,0,us,1000000,0,n,w*h*3,0xffffffff,0,0,0,w,h)

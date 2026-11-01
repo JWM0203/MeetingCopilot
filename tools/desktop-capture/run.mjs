@@ -23,7 +23,18 @@ writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:
 let app,page,recorder,recorderExit;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
-async function affinity(expected) {const s=await state(); const a=JSON.parse(native(['-Mode','Affinity','-Handle',s.handle])); report.affinity??=[];report.affinity.push({ms:Date.now(),...a,requested:expected});assert.equal(a.ok,true);assert.equal(a.affinity,expected?17:0,'Windows native affinity must match requested protection');}
+async function affinity(expected, { observeOnly = false } = {}) {
+ const until=Date.now()+8000;
+ do {
+  const s=await state();const a=JSON.parse(native(['-Mode','Affinity','-Handle',s.handle]));
+  report.affinity??=[];report.affinity.push({ms:Date.now(),...a,requested:expected,window:s,observeOnly});
+  assert.equal(a.ok,true);
+  if(observeOnly)return a;
+  if(a.affinity===(expected?17:0)){assert.equal(s.protected,expected);return a;}
+  await sleep(100);
+ } while(Date.now()<until);
+ throw new Error(`BLOCKED: Windows native affinity did not reach ${expected?17:0} after visible compositor update; see affinity observations`);
+}
 try {
  assert.equal(process.platform,'win32','BLOCKED: requires a Windows desktop');
  const env=isolatedEnvironment(process.env);delete env.ELECTRON_RENDERER_URL;
@@ -49,9 +60,11 @@ try {
  recorderExit=new Promise(resolve=>{recorder.on('exit',(code,signal)=>resolve({code,signal}));recorder.on('error',error=>resolve({code:null,error:error.message}));});
  await poll(()=>existsSync(join(output,'ready')),'native GDI recorder did not produce its first frame');
  event('baseline');await sleep(1200);
- await page.evaluate(()=>window.mc.setStealth(false));await affinity(false);
+ await page.evaluate(()=>window.mc.setStealth(false));await affinity(false,{observeOnly:true});
  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.fromId(globalThis.__captureMain);w.show();w.focus();});
- event('visible-positive-control');await sleep(1500);
+ // Hidden HWND affinity can lag the requested property until normal show/composition.
+ // Preserve the hidden readback, then require actual native 0 before accepting control.
+ await affinity(false);event('visible-positive-control');await sleep(1500);
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
  await page.keyboard.press('Escape');
