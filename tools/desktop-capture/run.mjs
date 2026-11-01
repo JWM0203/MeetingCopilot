@@ -8,21 +8,22 @@ import { resolve, join } from 'node:path';
 import { _electron } from 'playwright';
 import { isolatedEnvironment } from '../smoke-verdict.mjs';
 const root = resolve(import.meta.dirname, '../..');
-const output = join(root, 'release/smoke/desktop-capture');
+const startupProtectedMode=process.argv.includes('--startup-protected-transitions');
+const output = join(root, 'release/smoke',startupProtectedMode?'desktop-capture-startup-protected':'desktop-capture');
 // Dedicated generated-evidence directory only; never reuse stale ready/stop/frames.
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
-const report = { backend: 'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)', requestedFps: 30, events: [],
+const report = { mode:startupProtectedMode?'fresh-startup-protected-transitions':'runtime-toggle-guard', backend: 'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)', requestedFps: 30, events: [],
   knownRuntimeOffIssue: 'v3: correct main HWND stayed protected/native17 despite production IPC false and settings false. Not fixed or bypassed by this diagnostic; this sequence uses fresh OFF startup and separate fresh OFF post-control.',
   scope: 'Controlled Windows Server desktop, built source Electron app; NOT Windows 11, DXGI, ScreenCaptureKit or a meeting remote-view test. Synthetic public canary content only. Renderer/IPC actions are explicitly labelled; hide/show uses real OS keybd_event input.' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const poll = async (fn, label) => { const end=Date.now()+15000; while(Date.now()<end) {if(await fn())return; await sleep(75);} throw new Error(`BLOCKED: ${label}`); };
 const native = args => execFileSync('powershell.exe', ['-NoProfile','-File',join(import.meta.dirname,'native.ps1'),...args], {encoding:'utf8',timeout:10000}).trim();
 const profile = mkdtempSync(join(tmpdir(), 'mc-native-capture-'));
-writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:false,hotkeyToggle:'Control+Alt+F10'}}));
+writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:false,hotkeyToggle:startupProtectedMode?'':'Control+Alt+F10',hotkeyShot:''}}));
 const seed={id:'capture-fixture',name:'PUBLIC_CAPTURE_CANARY',createdAt:1,turns:[{id:'canary',kind:'free',label:'PUBLIC CAPTURE TEST',text:'PUBLIC_CANARY_7391 — synthetic desktop capture compatibility test',status:'done'}],segments:[],resumeText:'',jdText:'',memo:''};
 writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:seed.id,sessions:[seed]}));
-let app,page,recorder,recorderExit,postApp,postProfile;
+let app,page,recorder,recorderExit,postApp,postProfile,controlApp,protectedProfile;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
 async function requestProtectionViaToolbar() {
@@ -82,7 +83,7 @@ try {
   background.setBounds(display.bounds);background.show();main.setBounds({x:100,y:100,width:800,height:560});
   return {electron:process.versions.electron,platform:process.platform,display,hotkeyRegistered:globalShortcut.isRegistered('Control+Alt+F10'),version:app.getVersion()};
  });
- assert.equal(report.host.hotkeyRegistered,true,'BLOCKED: native global hotkey not registered');
+ if(!startupProtectedMode)assert.equal(report.host.hotkeyRegistered,true,'BLOCKED: native global hotkey not registered');
  // Public canary patch is confined to test renderer; keep genuine production controls/text.
  await page.evaluate(()=>{const marker=document.createElement('div');marker.id='capture-canary';marker.textContent='PUBLIC_CANARY_7391';marker.style.cssText='position:fixed;bottom:0;left:0;width:300px;height:35px;background:#ff00ff;color:#000;font:20px monospace;z-index:2147483647;pointer-events:none';document.body.append(marker);});
  await sleep(600);
@@ -100,26 +101,41 @@ try {
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
  await page.keyboard.press('Escape');
- event('enable-protection-request');await requestProtectionViaToolbar();await affinity(true);await sleep(400);
- event('protected-start');await sleep(700);
- await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();event('protected-hover');await sleep(900);
- await page.keyboard.press('Escape');await page.getByRole('button',{name:'New session',exact:true}).focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');event('protected-keyboard-focus');await sleep(700);await page.keyboard.press('Escape');
+ if(startupProtectedMode){
+  event('fresh-protected-process-launch',{outsideProtectedAssertion:true});
+  // The OFF control process owns the neutral background only; its main is hidden.
+  await app.evaluate(({BrowserWindow})=>BrowserWindow.fromId(globalThis.__captureMain).hide());
+  controlApp=app;protectedProfile=mkdtempSync(join(tmpdir(),'mc-native-startup-on-'));
+  writeFileSync(join(protectedProfile,'settings.json'),JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:true,hotkeyToggle:'Control+Alt+F10',hotkeyShot:''}}));
+  writeFileSync(join(protectedProfile,'sessions.json'),JSON.stringify({version:1,currentId:seed.id,sessions:[seed]}));
+  app=await _electron.launch({args:[root],cwd:root,env:{...env,MC_USERDATA:protectedProfile},timeout:30000});
+  page=await app.firstWindow();await page.locator('.turn-body').getByText('PUBLIC_CANARY_7391',{exact:false}).waitFor();
+  report.protectedStartup=await app.evaluate(({BrowserWindow,globalShortcut,app})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/index.html'));globalThis.__captureMain=w.id;w.setBounds({x:100,y:100,width:800,height:560});w.show();w.focus();return{pid:process.pid,userData:app.getPath('userData'),hotkeyRegistered:globalShortcut.isRegistered('Control+Alt+F10'),id:w.id,webContentsId:w.webContents.id,url:w.webContents.getURL()};});
+  assert.equal(resolve(report.protectedStartup.userData),resolve(protectedProfile));assert.equal(report.protectedStartup.hotkeyRegistered,true);
+  const startupSettings=await page.evaluate(()=>window.mc.getSettings());report.protectedStartup.settingsStealth=startupSettings.ui.stealth;report.protectedStartup.acknowledgement=startupSettings.contentProtection;assert.equal(startupSettings.ui.stealth,true);assert.equal(startupSettings.contentProtection?.actual,true);assert.equal(startupSettings.contentProtection?.ok,true);
+  await page.evaluate(()=>{const marker=document.createElement('div');marker.textContent='PUBLIC_CANARY_7391';marker.style.cssText='position:fixed;bottom:0;left:0;width:300px;height:35px;background:#ff00ff;color:#000;font:20px monospace;z-index:2147483647;pointer-events:none';document.body.append(marker);});
+  await affinity(true);await sleep(400);
+ }else{event('enable-protection-request');await requestProtectionViaToolbar();await affinity(true);await sleep(400);}
+ event('protected-start');await sleep(startupProtectedMode?2200:700);
+ await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();event('protected-hover');await sleep(startupProtectedMode?2000:900);
+ await page.keyboard.press('Escape');await page.getByRole('button',{name:'New session',exact:true}).focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');event('protected-keyboard-focus');await sleep(startupProtectedMode?1500:700);await page.keyboard.press('Escape');
  for(let i=0;i<4;i++) {
   const before=await state();event('native-hotkey-request',{iteration:i,before:before.visible});
   native(['-Mode','Hotkey']);await poll(async()=> (await state()).visible!==before.visible,'OS keybd_event global hotkey did not change visibility');
-  event('native-hotkey-confirmed',{iteration:i,...await state()});await sleep(600);
+  event('native-hotkey-confirmed',{iteration:i,...await state()});await affinity(true);await sleep(startupProtectedMode?1500:600);
  }
- await page.getByRole('button',{name:'Settings',exact:true}).click();event('protected-settings');await sleep(800);await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();event('protected-settings');await sleep(startupProtectedMode?1600:800);await page.getByRole('button',{name:'Cancel',exact:true}).click();
  event('region-request',{input:'production preload pickRegion(), NOT mock; escape uses renderer keyboard'});
+ const windowsBeforeRegion=app.windows().length;
  await page.evaluate(()=>{window.__captureRegionResult='pending';window.mc.pickRegion().then(x=>window.__captureRegionResult=x===null?'cancelled':'image').catch(e=>window.__captureRegionResult='error:'+e.message);});
- await poll(()=>app.windows().length===3,'production region overlay did not open');
+ await poll(()=>app.windows().length===windowsBeforeRegion+1,'production region overlay did not open');
  const region=app.windows().find(w=>w!==page&&w.url().startsWith('data:text/html;charset=utf-8,'));
  assert.ok(region,'BLOCKED: region window not identified');await region.waitForLoadState();
- event('protected-region-overlay');await sleep(1000);await region.keyboard.press('Escape');
- await poll(()=>page.evaluate(()=>window.__captureRegionResult==='cancelled'),'region cancellation not completed');event('region-cancelled');await sleep(1000);
+ event('protected-region-overlay');await sleep(startupProtectedMode?1800:1000);await region.keyboard.press('Escape');
+ await poll(()=>page.evaluate(()=>window.__captureRegionResult==='cancelled'),'region cancellation not completed');event('region-cancelled');await sleep(startupProtectedMode?2200:1000);
  event('protected-end');
  // Preserve the observed runtime-off issue; do not bypass it or mark it fixed.
- report.knownIssue='Prior diagnostic v3: production setStealth(false) returned false and settings became false, but correct main HWND remained protected=true/native affinity17 after normal show and 8s. This run starts fresh OFF, then turns ON; post-control uses a separate fresh OFF production process.';
+ report.knownIssue='Prior diagnostic v3: production setStealth(false) returned false and settings became false, but correct main HWND remained protected=true/native affinity17 after normal show and 8s. This diagnostic retains that finding. Fresh startup protected mode uses no runtime toggles; post-control uses a separate fresh OFF production process.';
  event('fresh-post-control-launch');
  await app.evaluate(({BrowserWindow})=>BrowserWindow.fromId(globalThis.__captureMain).hide());
  postProfile=mkdtempSync(join(tmpdir(),'mc-native-post-control-'));
@@ -143,8 +159,10 @@ finally {
   if(report.recorder.code!==0){report.error??='BLOCKED: native recorder failed or cleanup timed out';process.exitCode=1;}
  }
  if(postApp)await Promise.race([postApp.close(),sleep(10000).then(()=>{throw new Error('Post-control close timed out');})]).catch(e=>{report.cleanupError=e.message;postApp.process()?.kill();process.exitCode=1;});
+ if(controlApp)await Promise.race([controlApp.close(),sleep(10000).then(()=>{throw new Error('Control-background close timed out');})]).catch(e=>{report.cleanupError=e.message;controlApp.process()?.kill();process.exitCode=1;});
  if(app)await Promise.race([app.close(),sleep(10000).then(()=>{throw new Error('Electron close timed out');})]).catch(e=>{report.cleanupError=e.message;app.process()?.kill();process.exitCode=1;});
  writeFileSync(join(output,'run.json'),JSON.stringify(report,null,2));
  rmSync(profile,{recursive:true,force:true,maxRetries:10,retryDelay:300});
  if(postProfile)rmSync(postProfile,{recursive:true,force:true,maxRetries:10,retryDelay:300});
+ if(protectedProfile)rmSync(protectedProfile,{recursive:true,force:true,maxRetries:10,retryDelay:300});
 }

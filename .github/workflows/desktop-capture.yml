@@ -28,6 +28,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
       - run: npm run build
+        id: build
       - name: Record real native Windows desktop and controlled transitions
         run: node tools/desktop-capture/run.mjs
       - name: Analyze every sampled frame and package native video
@@ -39,6 +40,20 @@ jobs:
         with:
           name: native-gdi-desktop-capture
           path: release/smoke/desktop-capture/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Fresh-startup protected transitions (independent of runtime toggle failure)
+        if: always() && steps.build.outcome == 'success'
+        run: node tools/desktop-capture/run.mjs --startup-protected-transitions
+      - name: Analyze fresh-startup protected desktop frames
+        if: always() && steps.build.outcome == 'success'
+        run: python tools/desktop-capture/analyze.py release/smoke/desktop-capture-startup-protected
+      - name: Preserve separate startup-protected transition evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-gdi-startup-protected-transitions
+          path: release/smoke/desktop-capture-startup-protected/
           if-no-files-found: warn
           retention-days: 14
       - name: State coverage limits
