@@ -47,6 +47,12 @@ jobs:
       - name: Source app boot and IPC (Windows/macOS)
         if: runner.os != 'Linux'
         run: node tools/packaged-smoke.mjs --source
+      - name: Real Electron UI interactions (Linux virtual display, no-secret fixtures)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run smoke:ui
+      - name: Real Electron UI interactions (Windows/macOS, no-secret fixtures)
+        if: runner.os != 'Linux'
+        run: npm run smoke:ui
       - name: Build Windows installer and portable (unsigned)
         if: runner.os == 'Windows'
         run: npx --no-install electron-builder --win nsis portable --x64 --publish never "--config.nsis.runAfterFinish=false"
@@ -91,7 +97,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo 'No-secret gates cover build, unit tests, startup, preload/renderer IPC and package paths.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No-secret gates cover build, unit tests, startup, preload/renderer IPC, real Electron UI interactions with explicit no-secret fixtures, and package paths.' >> "$GITHUB_STEP_SUMMARY"
           echo 'NOT TESTED: paid providers, downloaded ASR models, physical audio, OS privacy prompts, screen-share exclusion, signing/notarization, Win11 client. Windows runner is Windows Server; macOS ARM64 and Intel have separate native jobs.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload boot logs even on failure
         if: always()
