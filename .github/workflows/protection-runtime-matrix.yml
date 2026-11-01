@@ -1,0 +1,35 @@
+name: Runtime protection root-cause matrix
+on:
+  pull_request:
+    paths:
+      - 'tools/desktop-capture/runtime-matrix.mjs'
+      - '.github/workflows/protection-runtime-matrix.yml'
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - name: Native captured official-setter matrix (no production changes)
+        run: node tools/desktop-capture/runtime-matrix.mjs
+      - name: Package real desktop frames (matrix is not the standard pass sequence)
+        if: always()
+        continue-on-error: true
+        run: python tools/desktop-capture/analyze.py release/smoke/runtime-protection-matrix
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-protection-matrix
+          path: release/smoke/runtime-protection-matrix/
+          retention-days: 14
