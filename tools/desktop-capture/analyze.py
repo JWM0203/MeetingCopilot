@@ -10,6 +10,7 @@ report = {'verdict':'BLOCKED','limits':['GDI desktop only; not DXGI, Windows 11,
 try:
     run, host = load('run.json'), load('native.json')
     report['mode']=run.get('mode')
+    report['baselinePreparation']=run.get('baselinePreparation')
     report['uiGuardVerified']=run.get('uiGuardVerified',False)
     report['knownRuntimeOffIssue']=run.get('knownRuntimeOffIssue')
     frames=[json.loads(l) for l in (out/'frames.jsonl').read_text(encoding='utf-8-sig').splitlines()]

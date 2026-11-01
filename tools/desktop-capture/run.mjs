@@ -26,6 +26,23 @@ writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:
 let app,page,recorder,recorderExit,postApp,postProfile,controlApp,protectedProfile;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
+async function waitForCleanBaseline() {
+ const started=Date.now(),deadline=started+12000;
+ report.baselinePreparation={started,timeoutMs:12000,requiredConsecutiveFrames:10,contaminatedFrames:[]};
+ event('recording-ready-await-clean-baseline',{allPreBaselineFramesPreserved:true});
+ while(Date.now()<deadline){
+  let frames=[];
+  try{frames=readFileSync(join(output,'frames.jsonl'),'utf8').replace(/^\uFEFF/,'').trim().split('\n').filter(Boolean).map(JSON.parse);}catch{/* writer may be between writes; try next complete sample */}
+  report.baselinePreparation.observedFrames=frames.length;
+  report.baselinePreparation.contaminatedFrames=frames.filter(f=>f.nonBackground/f.samples>=0.001||f.canary>0).slice(0,30).map(f=>f.frame);
+  const recent=frames.slice(-10);
+  if(recent.length===10&&recent.every(f=>f.nonBackground/f.samples<0.001&&f.canary===0)){
+   report.baselinePreparation.cleanAt=Date.now();report.baselinePreparation.cleanFrameNumbers=recent.map(f=>f.frame);return;
+  }
+  await sleep(75);
+ }
+ throw new Error('BLOCKED: desktop baseline did not naturally become clean for ten consecutive native frames within12s; all contamination retained, no notification suppression');
+}
 async function requestProtectionViaToolbar() {
  const observation={requested:true,input:'actual Playwright click on production toolbar button',ms:Date.now(),pageUrl:page.url()};
  report.uiProtectionRequest=observation;
@@ -91,7 +108,7 @@ try {
  recorder.stdout.on('data',d=>process.stdout.write(d));recorder.stderr.on('data',d=>process.stderr.write(d));
  recorderExit=new Promise(resolve=>{recorder.on('exit',(code,signal)=>resolve({code,signal}));recorder.on('error',error=>resolve({code:null,error:error.message}));});
  await poll(()=>existsSync(join(output,'ready')),'native GDI recorder did not produce its first frame');
- event('baseline');await sleep(1200);
+ await waitForCleanBaseline();event('baseline');await sleep(1200);
  report.initialControl={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),window:await state()};
  assert.equal(report.initialControl.settingsStealth,false);await affinity(false);
  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.fromId(globalThis.__captureMain);w.show();w.focus();});
