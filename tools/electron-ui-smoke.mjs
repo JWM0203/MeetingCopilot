@@ -96,12 +96,21 @@ try {
     // Electron's real will-download path: save without an OS file-dialog prompt.
     const exportPath = join(output, 'session-export.txt');
     await app.evaluate(({ session }, path) => {
-      session.defaultSession.once('will-download', (_event, item) => item.setSavePath(path));
+      globalThis.__uiDownload = { state: 'waiting' };
+      session.defaultSession.once('will-download', (_event, item) => {
+        item.setSavePath(path);
+        globalThis.__uiDownload = { state: 'started', filename: item.getFilename() };
+        item.once('done', (_event, state) => { globalThis.__uiDownload.state = state; });
+      });
     }, exportPath);
-    const downloadWait = page.waitForEvent('download');
     await button('↓ TXT').click();
-    const download = await downloadWait;
-    assert.equal(await download.failure(), null);
+    // Electron emits session DownloadItem events, not Playwright Page download
+    // events on every supported platform. Assert the native item's final state.
+    await poll(async () => {
+      const download = await app.evaluate(() => globalThis.__uiDownload);
+      if (['cancelled', 'interrupted'].includes(download.state)) throw new Error(`TXT download ${download.state}`);
+      return download.state === 'completed';
+    }, 'native Electron TXT download completed');
     await poll(async () => { try { return readFileSync(exportPath, 'utf8').includes('Fixture answer'); } catch { return false; } }, 'TXT saved');
     const exported = readFileSync(exportPath, 'utf8');
     assert.match(exported, /Fixture transcript/);
