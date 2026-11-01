@@ -131,8 +131,16 @@ try {
  await poll(()=>app.windows().length===windowsBeforeRegion+1,'production region overlay did not open');
  const region=app.windows().find(w=>w!==page&&w.url().startsWith('data:text/html;charset=utf-8,'));
  assert.ok(region,'BLOCKED: region window not identified');await region.waitForLoadState();
- event('protected-region-overlay');await sleep(startupProtectedMode?1800:1000);await region.keyboard.press('Escape');
- await poll(()=>page.evaluate(()=>window.__captureRegionResult==='cancelled'),'region cancellation not completed');event('region-cancelled');await sleep(startupProtectedMode?2200:1000);
+ event('protected-region-overlay');await sleep(startupProtectedMode?1800:1000);
+ let regionKeyError;
+ try{await region.keyboard.press('Escape');}catch(error){regionKeyError=error;}
+ // Escape closes this popup on keydown, so Playwright's subsequent keyup can
+ // reject with target-closed. Accept only after the *production* picker reports
+ // cancellation, the region is closed, and the main process/window are still live.
+ await poll(async()=>region.isClosed() && app.windows().length===windowsBeforeRegion && await page.evaluate(()=>window.__captureRegionResult==='cancelled'),'production region cancellation/closure not completed');
+ assert.equal(app.process().exitCode,null,'main process must remain alive after region Escape');assert.equal((await state()).visible,true);
+ if(regionKeyError && !/Target page, context or browser has been closed/.test(regionKeyError.message))throw regionKeyError;
+ event('region-cancelled',{productionResult:'cancelled',regionClosed:true,keyDispatchClosedAfterCancel:regionKeyError?.message??null});await sleep(startupProtectedMode?2200:1000);
  event('protected-end');
  // Preserve the observed runtime-off issue; do not bypass it or mark it fixed.
  report.knownIssue='Prior diagnostic v3: production setStealth(false) returned false and settings became false, but correct main HWND remained protected=true/native affinity17 after normal show and 8s. This diagnostic retains that finding. Fresh startup protected mode uses no runtime toggles; post-control uses a separate fresh OFF production process.';
