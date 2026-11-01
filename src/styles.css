@@ -7,14 +7,17 @@
 /* ---------- theme variables ----------
  * Renderer JS stamps data-theme='dark'|'light' on <html> (ui.theme; 'system'
  * resolves via matchMedia). No attribute = dark, so first paint never flashes.
- * The overlay window is semi-transparent — light theme uses higher-opacity
- * surfaces so text stays readable over arbitrary desktop content. */
+ * The overlay window is semi-transparent: the panel background alpha comes
+ * from --app-alpha (ui.opacity, stamped by App.tsx; the fallback here only
+ * matters for the first paint). Text and controls stay opaque. */
 :root {
   /* answer-body font size (right pane only; ui.fontScale) */
   --answer-font-size: 16px;
+  /* panel background alpha (ui.opacity); overridden inline by the renderer */
+  --app-alpha: 0.55;
 
-  --app-bg: rgba(22, 26, 34, 0.8);
-  --app-border: rgba(255, 255, 255, 0.1);
+  --app-bg: rgba(22, 26, 34, var(--app-alpha));
+  --app-border: rgba(255, 255, 255, 0.06);
   --text: #e8eaf0;
   --text-body: #e3e8f2;
   --text-muted: #8b95ab;
@@ -88,8 +91,8 @@
 }
 
 :root[data-theme='light'] {
-  --app-bg: rgba(246, 248, 251, 0.93);
-  --app-border: rgba(0, 0, 0, 0.16);
+  --app-bg: rgba(255, 255, 255, var(--app-alpha));
+  --app-border: rgba(0, 0, 0, 0.08);
   --text: #1f2633;
   --text-body: #1c2434;
   --text-muted: #5a6474;
@@ -175,12 +178,13 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  /* lighter than before; readable but not a heavy black slab */
+  /* alpha follows ui.opacity; a faint border + light blur keep the box from
+   * reading as a slab while still letting the desktop show through */
   background: var(--app-bg);
   border: 1px solid var(--app-border);
   border-radius: 12px;
   overflow: hidden;
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(2px);
 }
 
 /* ---------- titlebar ---------- */
@@ -300,6 +304,7 @@ body {
 
 /* session bar */
 .session-bar {
+  flex-wrap: wrap;
   gap: 5px;
 }
 
@@ -654,6 +659,30 @@ body {
 .settings-row input:focus,
 .settings-row select:focus {
   border-color: var(--accent);
+}
+
+/* opacity slider: value readout sits next to the track */
+.settings-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-row .settings-slider input[type='range'] {
+  flex: 1;
+  padding: 0;
+  background: transparent;
+  border: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-slider-value {
+  min-width: 3.5em;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .settings-section {
@@ -1030,3 +1059,18 @@ body {
 .dim {
   color: var(--text-dim);
 }
+
+/* Local knowledge controls inherit panel opacity; do not introduce an opaque app layer. */
+.rag-settings { margin-block: 16px; }
+.rag-check { display: flex; align-items: flex-start; gap: 8px; margin-block: 9px; }
+.rag-check input { flex: 0 0 auto; margin-top: 3px; }
+.rag-check span, .rag-root { overflow-wrap: anywhere; }
+.rag-root { font-size: 12px; }
+.rag-scope-dialog { width: min(560px, calc(100vw - 40px)); max-height: 80vh; overflow: auto; color: var(--text); background: var(--popup-bg); border: 1px solid var(--border-1); border-radius: 12px; padding: 20px; }
+.rag-scope-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.rag-scope-dialog fieldset { border: 0; padding: 0; min-width: 0; }
+.rag-document-list { max-height: 35vh; overflow: auto; }
+
+.answer-sources { font-size: 12px; color: var(--text-muted); margin: 6px 0; overflow-wrap: anywhere; }
+.answer-sources summary { cursor: pointer; }
+.answer-sources ul { padding-left: 20px; }

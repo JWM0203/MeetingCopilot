@@ -44,6 +44,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'electron/main.ts'),
           asrWorker: resolve(__dirname, 'electron/asr/worker.ts'),
+          ragWorker: resolve(__dirname, 'electron/rag/worker.ts'),
         },
       },
     },

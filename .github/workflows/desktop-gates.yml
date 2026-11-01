@@ -1,0 +1,119 @@
+name: Desktop gates
+on:
+  workflow_call:
+    inputs:
+      upload-installers:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  desktop:
+    name: no-secret gates (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked dependencies and patches
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests (no provider credentials)
+        run: npm test
+      - name: Python sidecar unit tests (no models)
+        run: npm run test:python
+      - name: Build
+        run: npm run build
+      - name: Verify transformer patch
+        run: npm run verify:patched
+      - name: Source app boot and IPC (Linux virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node tools/packaged-smoke.mjs --source
+      - name: Source app boot and IPC (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: node tools/packaged-smoke.mjs --source
+      - name: Build Windows installer and portable (unsigned)
+        if: runner.os == 'Windows'
+        run: npx --no-install electron-builder --win nsis portable --x64 --publish never -c.nsis.runAfterFinish=false
+      - name: Exercise unpacked, real portable, NSIS install/launch/uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/windows-package-smoke.ps1
+      - name: Build macOS app (unsigned, runner-native architecture)
+        if: runner.os == 'macOS'
+        run: npx --no-install electron-builder --mac --dir --publish never
+      - name: macOS packaged app boot and IPC
+        if: runner.os == 'macOS'
+        run: node tools/packaged-smoke.mjs
+      - name: Build Linux unpacked app
+        if: runner.os == 'Linux'
+        run: npx --no-install electron-builder --linux --dir --publish never
+      - name: Linux packaged app boot and IPC
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node tools/packaged-smoke.mjs
+      - name: Preserve Windows loader evidence even if source boot fails
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release/smoke | Out-Null
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture |
+            ConvertTo-Json | Set-Content release/smoke/windows-host.json
+          $roots = @('node_modules/electron/dist', 'node_modules/onnxruntime-node/bin', 'release/win-unpacked')
+          $files = foreach ($root in $roots) {
+            if (Test-Path $root) {
+              Get-ChildItem $root -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll', '.node' } |
+                Select-Object FullName, Length, @{n='Version';e={$_.VersionInfo.FileVersion}}
+            }
+          }
+          $files | ConvertTo-Json -Depth 3 | Set-Content release/smoke/windows-loader-inventory.json
+          try {
+            Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-45); Level=2} -ErrorAction Stop |
+              Where-Object { $_.Message -match 'MeetingCopilot|electron|0xc0000135' } |
+              Select-Object TimeCreated, Id, ProviderName, Message |
+              ConvertTo-Json -Depth 3 | Set-Content release/smoke/windows-loader-events.json
+          } catch { "SKIP event log: $($_.Exception.Message)" | Set-Content release/smoke/windows-loader-event-status.txt }
+      - name: Record coverage boundaries
+        if: always()
+        shell: bash
+        run: |
+          echo 'No-secret gates cover build, unit tests, startup, preload/renderer IPC and package paths.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT TESTED: paid providers, downloaded ASR models, physical audio, OS privacy prompts, screen-share exclusion, signing/notarization, Win11 client. Windows runner is Windows Server; macOS ARM64 and Intel have separate native jobs.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload boot logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}
+          path: release/smoke/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Compute release checksums after all Windows gates pass
+        if: inputs.upload-installers && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem release -Filter *.exe -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            Set-Content -Path "$($_.FullName).sha256" -Value "$hash  $($_.Name)" -Encoding ascii
+          }
+      - name: Upload gated Windows release files
+        if: inputs.upload-installers && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            release/*.exe
+            release/*.exe.sha256
+          if-no-files-found: error
+          retention-days: 14

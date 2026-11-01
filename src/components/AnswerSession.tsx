@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KbSlot, StoredSession } from '../../shared/protocol';
+import { sessionText } from '../../shared/sessionActions';
 import { useT } from '../i18n';
 
 export type TurnKind = 'segment' | 'continuous' | 'free' | 'translate' | 'vision';
@@ -11,6 +12,7 @@ export interface AnswerTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  sources?: import('../../shared/rag').RagSourceRef[];
 }
 
 /**
@@ -34,10 +36,13 @@ export function AnswerSession({
   onSwitch,
   onNew,
   onDelete,
+  onUndoDelete,
+  onOpenRagScope,
   onRename,
   onPickKb,
   onClearKb,
   onCancel,
+  onRetry,
   onClear,
   onFreeAsk,
   onShotAsk,
@@ -58,18 +63,24 @@ export function AnswerSession({
   onSwitch: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onUndoDelete?: () => void;
+  onOpenRagScope?: () => void;
   onRename: (id: string, name: string) => void;
   onPickKb: (slot: KbSlot) => void;
   onClearKb: (slot: KbSlot) => void;
   onCancel: (id: string) => void;
+  onRetry: (turn: AnswerTurn) => void;
   onClear: () => void;
   onFreeAsk: (question: string) => void;
-  onShotAsk: (question: string, imageDataUrl?: string) => void;
+  onShotAsk: (question: string, imageDataUrl?: string, sessionId?: string) => void;
 }) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const currentIdRef = useRef(currentId);
+  currentIdRef.current = currentId;
+  const [shotError, setShotError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const currentName = sessions.find((s) => s.id === currentId)?.name ?? '';
@@ -140,6 +151,18 @@ export function AnswerSession({
         <button className="btn btn-sm" onClick={onNew} title={t.answer.newTitle}>
           ＋
         </button>
+        {onOpenRagScope && <button className="btn btn-sm" onClick={onOpenRagScope}>📚 {t.rag.library}</button>}
+        {onUndoDelete && <button className="btn btn-sm" onClick={onUndoDelete}>{t.answer.undoDelete}</button>}
+        <button className="btn btn-sm" title={t.answer.exportText} onClick={() => {
+          const session = sessions.find((s) => s.id === currentId);
+          if (!session) return;
+          const url = URL.createObjectURL(new Blob([sessionText(session)], { type: "text/plain;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${session.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 80) || "session"}.txt`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }}>↓ TXT</button>
         <button className="btn btn-sm" onClick={() => onDelete(currentId)} title={t.answer.deleteTitle}>
           🗑
         </button>
@@ -205,6 +228,13 @@ export function AnswerSession({
                   </button>
                 )}
               </div>
+              {!!turn.sources?.length && <details className="answer-sources">
+                <summary>{t.rag.sources(turn.sources.length)}</summary>
+                <ul>{turn.sources.map((source) => <li key={source.chunkId}>
+                  {source.name} — {source.relativePath}
+                </li>)}</ul>
+              </details>}
+              {turn.status === 'error' && turn.kind !== 'vision' && <button className="btn btn-sm" disabled={!answersReady} onClick={() => onRetry(turn)}>{t.answer.retry}</button>}
               <div className="turn-body">
                 {turn.status === 'error' ? (
                   <span className="answer-error">{turn.error}</span>
@@ -219,6 +249,7 @@ export function AnswerSession({
           ))
         )}
       </div>
+      {shotError && <div className="kb-notice" role="alert">{t.answer.shotFail}</div>}
       {!answersReady && <div className="kb-notice">{answersHint}</div>}
       <div className="answer-input">
         <input
@@ -243,10 +274,13 @@ export function AnswerSession({
             title={t.answer.shotTitle}
             onClick={async () => {
               const q = inputRef.current?.value.trim() ?? '';
-              const img = await window.mc.pickRegion();
+              const sid = currentId;
+              setShotError(false);
+              let img: string | null;
+              try { img = await window.mc.pickRegion(); } catch { setShotError(true); return; }
               if (!img) return; // cancelled
-              if (inputRef.current) inputRef.current.value = '';
-              onShotAsk(q, img);
+              if (currentIdRef.current === sid && inputRef.current?.value.trim() === q) inputRef.current.value = '';
+              onShotAsk(q, img, sid);
             }}
           >
             📷

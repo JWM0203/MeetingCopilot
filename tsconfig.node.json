@@ -4,7 +4,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
@@ -18,6 +18,7 @@
     "electron/**/*.ts",
     "shared/**/*.ts",
     "test/**/*.ts",
+    "src/audio/**/*.ts",
     "tools/**/*.ts",
     "electron.vite.config.ts"
   ]

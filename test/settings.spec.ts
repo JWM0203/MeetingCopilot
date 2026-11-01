@@ -11,6 +11,7 @@ import {
   type SecretCipher,
 } from '../electron/settings';
 import type { SettingsFile } from '../shared/protocol';
+import { OPACITY_DEFAULT, OPACITY_MAX, OPACITY_MIN } from '../shared/opacity';
 
 const fakeCipher: SecretCipher = {
   available: () => true,
@@ -35,7 +36,7 @@ describe('SettingsStore', () => {
   it('boots with defaults when no file exists', () => {
     const s = new SettingsStore(file, fakeCipher);
     expect(s.data).toEqual(defaultSettings());
-    expect(s.data.llm.model).toBe('deepseek-chat');
+    expect(s.data.llm.model).toBe('deepseek-flash');
     expect(s.data.llm.answerLang).toBe('chinese');
     expect(s.data.ui.stealth).toBe(true);
     // v2: a brand new profile has never seen the wizard
@@ -178,6 +179,34 @@ describe('SettingsStore', () => {
     expect(s2.data.ui.theme).toBe('light');
     expect(s2.data.ui.fontScale).toBe('large');
     expect(s2.data.ui.stealth).toBe(false); // sibling untouched
+  });
+
+  it('defaults ui.opacity to the shared default and exposes it publicly', () => {
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.ui.opacity).toBe(OPACITY_DEFAULT);
+    expect(s.getPublic().ui.opacity).toBe(OPACITY_DEFAULT);
+  });
+
+  it('resets the never-applied legacy opacity (0.94) but keeps a real user choice', () => {
+    // every pre-slider profile carries 0.94 on disk; it was never rendered
+    writeFileSync(file, JSON.stringify({ version: 2, ui: { opacity: 0.94 } }), 'utf8');
+    expect(new SettingsStore(file, fakeCipher).data.ui.opacity).toBe(OPACITY_DEFAULT);
+
+    writeFileSync(file, JSON.stringify({ version: 2, ui: { opacity: 0.3 } }), 'utf8');
+    expect(new SettingsStore(file, fakeCipher).data.ui.opacity).toBe(0.3);
+  });
+
+  it('clamps opacity on load and on patch', () => {
+    writeFileSync(file, JSON.stringify({ version: 2, ui: { opacity: 7 } }), 'utf8');
+    const s = new SettingsStore(file, fakeCipher);
+    expect(s.data.ui.opacity).toBe(OPACITY_MAX);
+
+    s.applyPatch({ ui: { opacity: -1 } });
+    expect(s.data.ui.opacity).toBe(OPACITY_MIN);
+    s.applyPatch({ ui: { opacity: Number.NaN } });
+    expect(s.data.ui.opacity).toBe(OPACITY_DEFAULT);
+    s.applyPatch({ ui: { opacity: 0.4 } });
+    expect(new SettingsStore(file, fakeCipher).data.ui.opacity).toBe(0.4);
   });
 
   it('merges unknown/missing sections gracefully (migration-friendly)', () => {
@@ -628,5 +657,54 @@ describe('SettingsStore.recordVerification', () => {
     expect(s.getApiKeyForSlot('asr-cloud')).toBe('sk-seg-3333');
     expect(s.getApiKeyForSlot('asr-realtime')).toBe('sk-rt-4444');
     expect(new SettingsStore(join(dir, 'other.json'), fakeCipher).getApiKeyForSlot('llm')).toBeUndefined();
+  });
+});
+
+
+describe('retired official DeepSeek configuration migration', () => {
+  it.each([1, 2])('migrates v%s while preserving keys and other preferences', (version) => {
+    writeFileSync(file, JSON.stringify({ ...V1_FILE, version }));
+    const store = new SettingsStore(file, fakeCipher);
+    expect(store.data.llm.model).toBe('deepseek-flash');
+    expect(store.data.llm.apiKeyEnc).toBe(V1_FILE.llm.apiKeyEnc);
+    expect(store.data.vision).toMatchObject(V1_FILE.vision);
+  });
+  it('preserves relay model aliases and endpoint exactly', () => {
+    writeFileSync(file, JSON.stringify({ ...V1_FILE, version: 2,
+      llm: { ...V1_FILE.llm, baseUrl: 'https://relay.example/v1' } }));
+    const store = new SettingsStore(file, fakeCipher);
+    expect(store.data.llm.model).toBe('deepseek-chat');
+    expect(store.data.llm.baseUrl).toBe('https://relay.example/v1');
+  });
+});
+
+
+describe('local retrieval consent settings', () => {
+  it('defaults off for new and legacy profiles', () => {
+    expect(new SettingsStore(file, fakeCipher).getPublic().rag).toEqual({ enabled: false });
+    writeFileSync(file, JSON.stringify(V1_FILE));
+    expect(new SettingsStore(file, fakeCipher).data.rag).toEqual({ enabled: false });
+  });
+  it('round-trips opt-in and root selection, and preserves root when disabled', () => {
+    const store = new SettingsStore(file, fakeCipher);
+    store.applyPatch({ rag: { enabled: true, rootPath: '/local/reference' } });
+    const reloaded = new SettingsStore(file, fakeCipher);
+    expect(reloaded.getPublic().rag).toEqual({ enabled: true, rootPath: '/local/reference' });
+    reloaded.applyPatch({ rag: { enabled: false } });
+    expect(reloaded.data.rag).toEqual({ enabled: false, rootPath: '/local/reference' });
+    reloaded.applyPatch({ rag: { rootPath: '' } });
+    expect(reloaded.data.rag).toEqual({ enabled: false });
+  });
+  it('does not coerce malformed saved consent to true', () => {
+    writeFileSync(file, JSON.stringify({ version: 2, rag: { enabled: 'true', rootPath: 42 } }));
+    expect(new SettingsStore(file, fakeCipher).data.rag).toEqual({ enabled: false });
+  });
+  it('rejects invalid IPC patches before mutating other settings', () => {
+    const store = new SettingsStore(file, fakeCipher);
+    expect(() => store.applyPatch({ llm: { model: 'changed' }, rag: { enabled: 'yes' } } as never)).toThrow();
+    expect(store.data.llm.model).toBe('deepseek-flash');
+    expect(() => store.applyPatch({ rag: { rootPath: 42 } } as never)).toThrow();
+    expect(() => store.applyPatch({ rag: { rootPath: 'a\0b' } })).toThrow();
+    expect(store.data.rag).toEqual({ enabled: false });
   });
 });

@@ -12,6 +12,21 @@ import type { ProviderTestCode, UiLang } from '../shared/protocol';
  *  - deep engine diagnostics (they surface verbatim from the ASR/sidecar layer)
  */
 const zh = {
+  rag: {
+    library: '资料库', sources: (n: number) => `参考资料 (${n})`,
+    title: '本地多文档知识库（可选）', enable: '启用本地知识库',
+    disclosure: '默认关闭。首次启用会下载 Xenova/multilingual-e5-small 嵌入模型；本地索引会使用 CPU 和磁盘。回答时，选中的相关片段会发送给你配置的大模型服务，增加输入 token 和可能的费用。',
+    boundary: '仅索引所选文件夹内的受支持文件，不跟随符号链接。关闭或不可用时仍使用原有简历/JD 流程。',
+    immediate: '此处的启用、文件夹和重建操作立即生效，不受下方“取消”影响。',
+    folder: '选择本地文件夹', noFolder: '尚未选择文件夹', rebuild: '重建索引 / 重试',
+    unavailable: '当前版本无法使用本地知识库；原有简历/JD 功能不受影响。',
+    failed: '操作失败，请重试。', loading: '正在读取状态…',
+    counts: (files: number, chunks: number, failed: number) => `${files} 个文件 · ${chunks} 个片段 · ${failed} 个失败`,
+    phases: { disabled: '已关闭', downloading: '正在下载嵌入模型', loading: '正在加载模型', scanning: '正在扫描文件', parsing: '正在提取文本', embedding: '正在生成本地索引', ready: '索引就绪', error: '索引失败，可重试', unavailable: '本地索引不可用' },
+    scopeTitle: '本会话知识范围', scopeEnable: '本会话使用知识库', all: '全部已索引文档', selected: '只使用所选文档',
+    empty: '暂无已索引文档，请先在设置中选择文件夹并建立索引。',
+    selectRequired: '请至少选择一个文档，或改为全部文档。', save: '应用范围', cancel: '取消',
+  },
   locale: 'zh-CN',
   uiLang: 'zh' as UiLang,
   app: {
@@ -81,6 +96,8 @@ const zh = {
     answerSelection: '⚡回答选中',
   },
   answer: {
+    shotFail: '截图失败，请重试。',
+    retry: '重试',
     kindTag: {
       segment: '答',
       continuous: '持续',
@@ -91,7 +108,9 @@ const zh = {
     switchTitle: '切换会话',
     renameTitle: '重命名当前会话',
     newTitle: '新建会话',
-    deleteTitle: '删除当前会话',
+    deleteTitle: '删除当前会话（本次运行中可撤销最近一次删除）',
+    undoDelete: '撤销删除',
+    exportText: '导出当前会话转录和问答为 TXT（不包含导入资料）',
     resume: '简历',
     resumeSetTitle: (name: string, chars: number) =>
       `简历：${name}（${chars}字）点击更换（.md/.txt/.docx/.pdf）`,
@@ -372,7 +391,7 @@ const zh = {
     helpHint: '常见问题、各服务商 Key 教程与排查步骤，全部在本机离线可读。',
     textSection: '文本大模型（回答/翻译）',
     baseUrl: 'Base URL',
-    model: '模型（DeepSeek 用 deepseek-chat；MiMo 用 mimo-v2.5-pro）',
+    model: '模型（DeepSeek 用 deepseek-flash；MiMo 用 mimo-v2.5-pro）',
     apiKey: 'API Key',
     keyKeepPlaceholder: '留空则不修改',
     visionSection: '视觉模型（截图问答 / 多模态回答）',
@@ -411,6 +430,8 @@ const zh = {
     themeLight: '浅色',
     themeSystem: '跟随系统',
     fontScaleLabel: '答案字号（只影响右栏答案正文）',
+    opacityLabel: '面板透明度（越低越透明，文字始终清晰）',
+    opacityHint: '拖动即时预览；点「保存」生效，「取消」恢复原值。',
     fontSmall: '小（13px）',
     fontMedium: '中（16px，默认）',
     fontLarge: '大（19px）',
@@ -432,6 +453,22 @@ const zh = {
 export type Dict = typeof zh;
 
 const en: Dict = {
+  rag: {
+    library: 'Library', sources: (n: number) => `Sources (${n})`,
+    title: 'Local multi-document knowledge (optional)', enable: 'Enable local knowledge',
+    disclosure: 'Off by default. First use downloads the Xenova/multilingual-e5-small embedding model; local indexing uses CPU and disk. Relevant selected excerpts are sent to your configured LLM provider when answering, adding input tokens and possible charges.',
+    boundary: 'Only supported files inside the selected folder are indexed; symbolic links are not followed. When disabled or unavailable, the existing resume/JD workflow remains available.',
+    immediate: 'Enable, folder selection and rebuild take effect immediately; Cancel below does not undo them.',
+    folder: 'Choose local folder', noFolder: 'No folder selected', rebuild: 'Rebuild index / Retry',
+    unavailable: 'Local knowledge is unavailable in this build; the existing resume/JD workflow is unaffected.',
+    failed: 'The operation failed. Please retry.', loading: 'Reading status…',
+    counts: (files: number, chunks: number, failed: number) => `${files} files · ${chunks} chunks · ${failed} failed`,
+    phases: { disabled: 'Disabled', downloading: 'Downloading embedding model', loading: 'Loading model', scanning: 'Scanning files', parsing: 'Extracting text', embedding: 'Building local index', ready: 'Index ready', error: 'Index failed — retry available', unavailable: 'Local index unavailable' },
+    scopeTitle: 'Knowledge for this session', scopeEnable: 'Use knowledge in this session', all: 'All indexed documents', selected: 'Selected documents only',
+    empty: 'No indexed documents yet. Choose a folder and build its index in Settings first.',
+    selectRequired: 'Select at least one document, or choose all documents.', save: 'Apply scope', cancel: 'Cancel',
+  },
+
   locale: 'en-US',
   uiLang: 'en',
   app: {
@@ -504,6 +541,8 @@ const en: Dict = {
     answerSelection: '⚡ Answer selection',
   },
   answer: {
+    shotFail: 'Screenshot capture failed. Please retry.',
+    retry: 'Retry',
     kindTag: {
       segment: 'Ans',
       continuous: 'Auto',
@@ -514,7 +553,9 @@ const en: Dict = {
     switchTitle: 'Switch session',
     renameTitle: 'Rename current session',
     newTitle: 'New session',
-    deleteTitle: 'Delete current session',
+    deleteTitle: 'Delete current session (undo available until app closes)',
+    undoDelete: 'Undo delete',
+    exportText: 'Export transcript and answers as TXT (imported material excluded)',
     resume: 'Resume',
     resumeSetTitle: (name: string, chars: number) =>
       `Resume: ${name} (${chars} chars) — click to replace (.md/.txt/.docx/.pdf)`,
@@ -798,7 +839,7 @@ const en: Dict = {
     helpHint: 'Common problems, per-provider key guides and fixes — all readable offline.',
     textSection: 'Text LLM (answers / translation)',
     baseUrl: 'Base URL',
-    model: 'Model (DeepSeek: deepseek-chat; MiMo: mimo-v2.5-pro)',
+    model: 'Model (DeepSeek: deepseek-flash; MiMo: mimo-v2.5-pro)',
     apiKey: 'API Key',
     keyKeepPlaceholder: 'leave empty to keep',
     visionSection: 'Vision model (screenshot Q&A / multimodal answers)',
@@ -837,6 +878,8 @@ const en: Dict = {
     themeLight: 'Light',
     themeSystem: 'Follow system',
     fontScaleLabel: 'Answer font size (right pane body only)',
+    opacityLabel: 'Panel opacity (lower = more see-through; text stays solid)',
+    opacityHint: 'Drag for a live preview; Save applies it, Cancel restores the old value.',
     fontSmall: 'Small (13px)',
     fontMedium: 'Medium (16px, default)',
     fontLarge: 'Large (19px)',

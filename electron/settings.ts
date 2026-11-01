@@ -20,8 +20,10 @@ import type {
   SettingsPatch,
   UiLang,
 } from '../shared/protocol';
+import { migrateDeepSeekModel } from '../shared/deepseek';
 import { defaultHotkeysForPlatform } from '../shared/platform';
 import { providerIdForEndpoint } from '../shared/providerCatalog';
+import { OPACITY_DEFAULT, OPACITY_LEGACY_UNUSED, clampOpacity } from '../shared/opacity';
 
 export interface SecretCipher {
   available(): boolean;
@@ -61,14 +63,13 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
     },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
-      // 'deepseek-chat' = v4-flash in NON-thinking mode (first token ~0.4 s).
-      // Plain 'deepseek-v4-flash' streams a long reasoning_content chain first
-      // — too slow for a live copilot (measured 2026-07-09).
-      model: 'deepseek-chat',
+      // Official Flash defaults to thinking; the adapter explicitly disables it.
+      model: 'deepseek-flash',
       answerLang: 'chinese',
       answerWithVision: false,
     },
     vision: {},
+    rag: { enabled: false },
     asr: {
       language: 'auto',
       // default = local Fun-ASR-Nano via the auto-spawned sidecar: free,
@@ -82,7 +83,7 @@ export function defaultSettings(platform: string = process.platform): SettingsFi
       stealth: true,
       hotkeyToggle: hotkeys.toggle,
       hotkeyShot: hotkeys.shot,
-      opacity: 0.94,
+      opacity: OPACITY_DEFAULT,
       // medium = 16px answer body (was 13px) — readable at a glance mid-interview
       fontScale: 'medium',
       theme: 'dark',
@@ -102,6 +103,23 @@ export function apiKeyHint(plain: string): string | undefined {
   return key ? key.slice(-4) : undefined;
 }
 
+/** Local retrieval is opt-in even for malformed or older profiles. */
+function normalizeRagSettings(raw: unknown): { enabled: boolean; rootPath?: string } {
+  const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const rootPath = typeof value.rootPath === 'string' && !value.rootPath.includes('\0')
+    ? value.rootPath.trim() : '';
+  return { enabled: value.enabled === true, ...(rootPath ? { rootPath } : {}) };
+}
+
+function validateRagPatch(raw: unknown): void {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Invalid RAG settings');
+  const value = raw as Record<string, unknown>;
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') throw new TypeError('RAG enabled must be boolean');
+  if (value.rootPath !== undefined && (typeof value.rootPath !== 'string' || value.rootPath.includes('\0'))) {
+    throw new TypeError('RAG rootPath must be a valid string');
+  }
+}
+
 /**
  * Per-section spread merge against the defaults. Unknown keys in the stored
  * file survive (forward compatibility); missing ones get the default.
@@ -110,8 +128,11 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
   return {
     version: 2,
     onboarding: { ...defaults.onboarding, ...raw.onboarding, schemaVersion: 1 },
-    llm: { ...defaults.llm, ...raw.llm },
+    llm: { ...defaults.llm, ...raw.llm, model: migrateDeepSeekModel(
+      raw.llm?.baseUrl ?? defaults.llm.baseUrl, raw.llm?.model ?? defaults.llm.model,
+    ) },
     vision: { ...defaults.vision, ...raw.vision },
+    rag: normalizeRagSettings(raw.rag),
     asr: {
       ...defaults.asr,
       ...raw.asr,
@@ -119,9 +140,19 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       realtime: { ...defaults.asr.realtime, ...raw.asr?.realtime },
       localRealtime: { ...defaults.asr.localRealtime, ...raw.asr?.localRealtime },
     },
-    ui: { ...defaults.ui, ...raw.ui },
+    ui: { ...defaults.ui, ...raw.ui, opacity: normalizeStoredOpacity(raw.ui?.opacity) },
     audio: { ...defaults.audio, ...raw.audio },
   };
+}
+
+/**
+ * ui.opacity existed on disk long before anything read it (every profile has
+ * the old 0.94 written by defaultSettings()). That value is not a user choice,
+ * so it is swapped for the new default; anything else is merely clamped.
+ */
+function normalizeStoredOpacity(stored: unknown): number {
+  if (stored === undefined || stored === OPACITY_LEGACY_UNUSED) return OPACITY_DEFAULT;
+  return clampOpacity(stored);
 }
 
 /**
@@ -131,7 +162,8 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
  * Guarantees:
  *  - `apiKeyEnc` ciphertexts are carried over byte-for-byte (we cannot decrypt
  *    here, and re-encrypting would need safeStorage);
- *  - baseUrl / model / proxy / backend / ui / audio are untouched;
+ *  - baseUrl / proxy / backend / ui / audio are untouched; only retired official
+ *    DeepSeek model names are migrated (third-party relay names are unchanged);
  *  - `providerId` is inferred from the catalog by exact baseUrl+model match,
  *    falling back to 'custom';
  *  - a settings file EXISTS, so this user already configured the app by hand:
@@ -299,6 +331,8 @@ export class SettingsStore {
   }
 
   applyPatch(patch: SettingsPatch): void {
+    // Validate before changing any section, so invalid IPC input cannot partially save.
+    if (patch.rag !== undefined) validateRagPatch(patch.rag);
     if (patch.llm) {
       const { apiKey, ...rest } = patch.llm;
       Object.assign(this.data.llm, stripUndefined(rest));
@@ -337,7 +371,12 @@ export class SettingsStore {
         }
       }
     }
-    if (patch.ui) Object.assign(this.data.ui, stripUndefined(patch.ui));
+    if (patch.rag) this.data.rag = normalizeRagSettings({ ...this.data.rag, ...stripUndefined(patch.rag) });
+    if (patch.ui) {
+      const ui = stripUndefined(patch.ui);
+      if (ui.opacity !== undefined) ui.opacity = clampOpacity(ui.opacity);
+      Object.assign(this.data.ui, ui);
+    }
     if (patch.audio) Object.assign(this.data.audio, stripUndefined(patch.audio));
     this.save();
   }
@@ -397,6 +436,7 @@ export class SettingsStore {
       // the renderer must be able to warn before it hands over a plaintext key
       weakCrypto: !this.cipher.secure,
       onboarding: { ...d.onboarding },
+      rag: { ...d.rag },
       llm: {
         baseUrl: d.llm.baseUrl,
         model: d.llm.model,

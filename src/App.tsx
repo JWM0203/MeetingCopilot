@@ -27,14 +27,13 @@ import { HelpPanel } from './components/HelpPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
+import type { RagDocumentStatus, RagScope } from '../shared/rag';
+import { KnowledgeScopeDialog } from './components/KnowledgeScopeDialog';
+import { restoreSession } from '../shared/sessionActions';
+import { applyPanelOpacity } from './panelOpacity';
+import { clearError, setError, updateAsrUiState, type AsrUiState } from '../shared/asrUiState';
 
-export interface AsrUiState {
-  phase: 'loading' | 'ready' | 'error';
-  ep?: string;
-  gpuSuspect?: boolean;
-  workerState: 'loading' | 'listening' | 'speech' | 'transcribing' | 'stopped';
-  lastError?: string;
-}
+export type { AsrUiState } from '../shared/asrUiState';
 
 export interface HudStats {
   lastE2eMs?: number;
@@ -86,6 +85,9 @@ export function App() {
   const [partials, setPartials] = useState<{ them?: string; me?: string }>({});
   const [sessions, setSessions] = useState<StoredSession[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
+  const [ragScopeSessionId, setRagScopeSessionId] = useState<string | null>(null);
+  const [ragDocuments, setRagDocuments] = useState<RagDocumentStatus[]>([]);
+  const [deletedSession, setDeletedSession] = useState<{ session: StoredSession; index: number } | null>(null);
   const [kbNotice, setKbNotice] = useState<string | null>(null);
 
   const loopbackRef = useRef<LoopbackCapture | null>(null);
@@ -97,6 +99,7 @@ export function App() {
   const currentIdRef = useRef<string>('');
   const answerLangRef = useRef<AnswerLang>('chinese');
   const loaded = useRef(false);
+  const ragScopeRequest = useRef(0);
 
   // UI language: settings-driven; ref mirror so stable callbacks stay fresh
   const t = getDict(settings?.ui.lang);
@@ -199,7 +202,7 @@ export function App() {
       // line — so the turn label (and thus session history) carries the real
       // question instead of a constant '对方最新发言' (v1 history-label bug)
       let question = text;
-      if (mode === 'continuous') {
+      if (mode === 'continuous' && !question) {
         for (let i = segs.length - 1; i >= 0; i--) {
           if ((segs[i].speaker ?? 'them') === 'them') {
             question = segs[i].text;
@@ -220,6 +223,7 @@ export function App() {
         answerLang: answerLangRef.current,
         history: mode === 'translate' ? undefined : buildHistory(),
         ...material,
+        ragScope: mode === 'translate' ? undefined : sessionsRef.current.find((s) => s.id === sid)?.ragScope,
       };
       window.mc.llmAsk(payload);
     },
@@ -227,9 +231,9 @@ export function App() {
   );
 
   const askShot = useCallback(
-    (question: string, imageDataUrl?: string) => {
-      const sid = currentIdRef.current;
-      if (!sid) return;
+    (question: string, imageDataUrl?: string, sid = currentIdRef.current) => {
+      const session = sessionsRef.current.find((s) => s.id === sid);
+      if (!session) return;
       const requestId = uid('shot');
       appendTurn(sid, {
         id: requestId,
@@ -239,17 +243,21 @@ export function App() {
         status: 'streaming',
       });
       maybeTitle(sid, question || tRef.current.app.shotQuestion);
-      const m = currentMaterial();
-      const background = [m.resume, m.jd].filter(Boolean).join('\n\n') || undefined;
-      window.mc.shotAsk({ requestId, question, background, imageDataUrl });
+      const background = [session.resumeText, session.jdText].filter(Boolean).join('\n\n') || undefined;
+      window.mc.shotAsk({ requestId, question, background, imageDataUrl, ragScope: sessionsRef.current.find((s) => s.id === sid)?.ragScope });
     },
     [appendTurn, currentMaterial, maybeTitle],
   );
 
   /** region screenshot flow (📷 button or hotkey): drag a region, then ask */
   const doRegionShot = useCallback(async () => {
-    const img = await window.mc.pickRegion();
-    if (img) askShot('', img);
+    const sid = currentIdRef.current;
+    try {
+      const img = await window.mc.pickRegion();
+      if (img) askShot('', img, sid);
+    } catch {
+      setKbNotice(tRef.current.answer.shotFail);
+    }
   }, [askShot]);
 
   // ---- boot: load settings + sessions ----
@@ -280,13 +288,8 @@ export function App() {
     });
 
     const handleAsrEvent = (ev: AsrEvent) => {
-      if (ev.kind === 'ready') {
-        setAsr((s) => ({ ...s, phase: 'ready', ep: ev.ep, gpuSuspect: ev.gpuSuspect, workerState: 'listening' }));
-      } else if (ev.kind === 'status') {
-        setAsr((s) => ({ ...s, workerState: ev.state }));
-      } else if (ev.kind === 'error') {
-        setAsr((s) => ({ ...s, phase: ev.fatal ? 'error' : s.phase, lastError: ev.message }));
-      } else if (ev.kind === 'partial') {
+      setAsr((s) => updateAsrUiState(s, ev));
+      if (ev.kind === 'partial') {
         setPartials((p) => ({ ...p, [ev.speaker]: ev.text }));
       } else if (ev.kind === 'segment') {
         setPartials((p) => ({ ...p, [ev.speaker]: undefined })); // final replaces the live partial
@@ -340,7 +343,7 @@ export function App() {
           turns: s.turns.map((t) => {
             if (t.id !== ev.requestId) return t;
             if (ev.kind === 'delta') return { ...t, text: t.text + ev.text };
-            if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done' };
+            if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done', sources: ev.sources };
             return { ...t, status: 'error', error: ev.message };
           }),
         })),
@@ -378,11 +381,12 @@ export function App() {
     return () => clearTimeout(t);
   }, [sessions, currentId]);
 
-  // ---- apply UI theme + answer font scale to the document root ----
+  // ---- apply UI theme + answer font scale + panel opacity to the document root ----
   useEffect(() => {
     const ui = settings?.ui;
     if (!ui) return;
     document.documentElement.dataset.fontScale = ui.fontScale ?? 'medium';
+    applyPanelOpacity(ui.opacity);
     const apply = () => {
       const mode = ui.theme ?? 'dark';
       const dark =
@@ -440,9 +444,10 @@ export function App() {
       }
       window.mc.captureStarted();
       setCapturing(true);
+      setAsr((s) => clearError(s, 'capture'));
       prewarm(true); // ▶ = the meeting starts — build the KV prefix cache now
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: tRef.current.app.captureStartFail((e as Error).message) }));
+      setAsr((s) => setError(s, 'capture', tRef.current.app.captureStartFail((e as Error).message)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -468,15 +473,15 @@ export function App() {
     try {
       await mic.start(settings?.audio.micDeviceId, (buf, ts) => window.mc.sendPcm(buf, ts, 'me'));
       setMicActive(true);
-      if (mics.length === 0) void listMics().then(setMics);
+      setAsr((s) => clearError(s, 'mic'));
+      if (mics.length === 0) void listMics().then(setMics).catch(() => undefined);
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: tRef.current.app.micStartFail((e as Error).message) }));
+      setAsr((s) => setError(s, 'mic', tRef.current.app.micStartFail((e as Error).message)));
     }
   }, [settings, mics]);
 
   const setSeg = useCallback(
-    (segId: number, patch: Partial<TranscriptSegment>) => {
-      const sid = currentIdRef.current;
+    (sid: string, segId: number, patch: Partial<TranscriptSegment>) => {
       setSessions((list) =>
         list.map((s) =>
           s.id === sid
@@ -491,11 +496,12 @@ export function App() {
   const translateSegment = useCallback(
     (seg: TranscriptSegment) => {
       if (seg.translating) return; // re-translating an already-translated bubble is allowed
-      setSeg(seg.id, { translating: true });
+      const sid = currentIdRef.current;
+      setSeg(sid, seg.id, { translating: true });
       window.mc
         .translate(seg.text)
-        .then((zh) => setSeg(seg.id, { translation: zh, translating: false }))
-        .catch(() => setSeg(seg.id, { translation: tRef.current.app.translateFail, translating: false }));
+        .then((zh) => setSeg(sid, seg.id, { translation: zh, translating: false }))
+        .catch(() => setSeg(sid, seg.id, { translation: tRef.current.app.translateFail, translating: false }));
     },
     [setSeg],
   );
@@ -532,7 +538,11 @@ export function App() {
         await mic.stop();
         await mic
           .start(deviceId || undefined, (buf, ts) => window.mc.sendPcm(buf, ts, 'me'))
-          .catch(() => setMicActive(false));
+          .then(() => { setMicActive(true); setAsr((s) => clearError(s, 'mic')); })
+          .catch((e) => {
+            setMicActive(false);
+            setAsr((s) => setError(s, 'mic', tRef.current.app.micStartFail((e as Error).message)));
+          });
       }
     },
     [],
@@ -551,10 +561,11 @@ export function App() {
           (buf, ts) => window.mc.sendPcm(buf, ts, 'them'),
           { audioProcessing: false },
         )
+        .then(() => setAsr((s) => clearError(s, 'capture')))
         .catch((e) => {
           window.mc.captureStopped();
           setCapturing(false);
-          setAsr((s) => ({ ...s, lastError: tRef.current.app.themInputSwitchFail((e as Error).message) }));
+          setAsr((s) => setError(s, 'capture', tRef.current.app.themInputSwitchFail((e as Error).message)));
         });
     }
   }, []);
@@ -581,6 +592,13 @@ export function App() {
   }, []);
 
   const deleteSession = useCallback((id: string) => {
+    const index = sessionsRef.current.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    const session = sessionsRef.current[index];
+    for (const turn of session.turns) {
+      if (turn.status === 'streaming') window.mc.llmCancel(turn.id);
+    }
+    setDeletedSession({ session: { ...session, turns: session.turns.map((t) => t.status === 'streaming' ? { ...t, status: 'done' } : t) }, index });
     setSessions((list) => {
       const next = list.filter((s) => s.id !== id);
       if (next.length === 0) {
@@ -592,6 +610,13 @@ export function App() {
       return next;
     });
   }, []);
+
+  const undoDeleteSession = useCallback(() => {
+    if (!deletedSession) return;
+    setSessions((list) => restoreSession(list, deletedSession.session, deletedSession.index));
+    setCurrentId(deletedSession.session.id);
+    setDeletedSession(null);
+  }, [deletedSession]);
 
   const renameSession = useCallback(
     (id: string, name: string) => {
@@ -643,6 +668,7 @@ export function App() {
 
   const pickKb = useCallback(
     async (slot: KbSlot) => {
+      const sid = currentIdRef.current;
       const r = await window.mc.pickKnowledge(slot);
       if (!r) return;
       if (!r.text.trim()) {
@@ -651,11 +677,12 @@ export function App() {
         return;
       }
       setKbNotice(null);
-      patchSession(currentIdRef.current, (s) =>
+      patchSession(sid, (s) =>
         slot === 'resume'
           ? { ...s, resumeName: r.name, resumeText: r.text }
           : { ...s, jdName: r.name, jdText: r.text },
       );
+      if (sid !== currentIdRef.current) return;
       // material changed → reheat the prefix cache with the fresh bytes;
       // patchSession is async (React state), so pass the new slots directly
       window.mc.prewarm({
@@ -867,6 +894,7 @@ export function App() {
 
       {showSettings && settings && (
         <SettingsPanel
+          onSettingsChanged={setSettings}
           settings={settings}
           onSaved={(s) => {
             setSettings(s);
@@ -888,6 +916,17 @@ export function App() {
           }}
         />
       )}
+
+      {ragScopeSessionId && <KnowledgeScopeDialog
+        key={ragScopeSessionId}
+        scope={sessions.find((session) => session.id === ragScopeSessionId)?.ragScope ?? { enabled: false }}
+        documents={ragDocuments}
+        onSave={(ragScope: RagScope) => {
+          patchSession(ragScopeSessionId, (session) => ({ ...session, ragScope }));
+          setRagScopeSessionId(null);
+        }}
+        onClose={() => setRagScopeSessionId(null)}
+      />}
 
       <div className="panes">
         <TranscriptPanel
@@ -914,10 +953,21 @@ export function App() {
           onSwitch={setCurrentId}
           onNew={createSession}
           onDelete={deleteSession}
+          onUndoDelete={deletedSession ? undoDeleteSession : undefined}
+          onOpenRagScope={settings?.rag.enabled ? () => {
+            const sid = currentIdRef.current;
+            const request = ++ragScopeRequest.current;
+            void window.mc.getRagDocuments().then((documents) => {
+              if (request !== ragScopeRequest.current || currentIdRef.current !== sid || !sessionsRef.current.some((s) => s.id === sid)) return;
+              setRagDocuments(documents);
+              setRagScopeSessionId(sid);
+            }).catch(() => setKbNotice('Knowledge library unavailable / 资料库暂不可用'));
+          } : undefined}
           onRename={renameSession}
           onPickKb={(slot) => void pickKb(slot)}
           onClearKb={clearKb}
           onCancel={cancelTurn}
+          onRetry={(turn) => { if (turn.kind !== 'vision') askLlm(turn.kind, turn.label); }}
           onClear={() => patchSession(currentIdRef.current, (s) => ({ ...s, turns: [] }))}
           onFreeAsk={(q) => askLlm('free', q)}
           onShotAsk={askShot}

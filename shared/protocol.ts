@@ -8,6 +8,8 @@ import type { ProviderCapability, ProviderId } from './providerCatalog';
 export type { ProviderCapability, ProviderId } from './providerCatalog';
 import type { TrayRendererCommand } from './trayMenu';
 export type { TrayCommand, TrayRendererCommand } from './trayMenu';
+import type { RagDocumentStatus, RagScope, RagSourceRef, RagStatus } from './rag';
+export type { RagDocumentStatus, RagScope, RagSourceRef, RagStatus } from './rag';
 
 // ---------- Settings ----------
 
@@ -216,6 +218,7 @@ export interface SettingsFile {
     hotkeyToggle: string;
     /** global hotkey for region-screenshot Q&A */
     hotkeyShot: string;
+    /** panel background alpha, see shared/opacity.ts for the range */
     opacity: number;
     /** answer-body font size (small=13px / medium=16px / large=19px) */
     fontScale: FontScale;
@@ -235,6 +238,8 @@ export interface SettingsFile {
     /** chosen mic device id ('' / undefined = system default) */
     micDeviceId?: string;
   };
+  /** local folder-backed retrieval; opt-in and disabled for every old profile */
+  rag: { enabled: boolean; rootPath?: string };
 }
 
 /** What the renderer is allowed to see (no secrets). */
@@ -304,6 +309,7 @@ export interface PublicSettings {
     trayNoticeShown: boolean;
   };
   audio: { themDeviceId?: string; micEnabled: boolean; micDeviceId?: string };
+  rag: { enabled: boolean; rootPath?: string };
 }
 
 /**
@@ -359,6 +365,7 @@ export interface SettingsPatch {
     trayNoticeShown?: boolean;
   };
   audio?: { themDeviceId?: string; micEnabled?: boolean; micDeviceId?: string };
+  rag?: { enabled?: boolean; rootPath?: string };
 }
 
 // ---------- ASR events (main -> renderer) ----------
@@ -427,6 +434,8 @@ export interface StoredTurn {
   text: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /** references used for this answer; never mixed into the spoken answer */
+  sources?: RagSourceRef[];
 }
 
 export interface StoredSession {
@@ -448,6 +457,8 @@ export interface StoredSession {
   jdText?: string;
   /** rolling interview memo (P1): ≤800-char structured summary, async-updated */
   memo?: string;
+  /** optional in old files; SessionStore normalizes absence to disabled */
+  ragScope?: RagScope;
 }
 
 export interface SessionsFile {
@@ -477,11 +488,13 @@ export interface LlmAskPayload {
   jd?: string;
   /** rolling interview memo (P1) */
   memo?: string;
+  /** per-session local-library scope; omitted/disabled preserves legacy behavior */
+  ragScope?: RagScope;
 }
 
 export type LlmEvent =
   | { requestId: string; kind: 'delta'; text: string }
-  | { requestId: string; kind: 'done'; text: string }
+  | { requestId: string; kind: 'done'; text: string; sources?: RagSourceRef[] }
   | { requestId: string; kind: 'error'; message: string };
 
 // ---------- System tray (main -> renderer) ----------
@@ -522,6 +535,18 @@ export const IPC = {
   /** invoke: (KbSlot) => {name,text,chars} | null — pick a resume/JD document
    * (.md/.txt/.docx/.pdf, parsed deterministically) for the CURRENT session */
   knowledgePick: 'knowledge:pick',
+  /** invoke: choose the global knowledge root; no scan occurs until enabled */
+  ragChooseRoot: 'rag:choose-root',
+  /** invoke: current replayable index/model state */
+  ragStatusGet: 'rag:status-get',
+  /** invoke: indexed metadata and per-file errors, never document contents */
+  ragDocumentsGet: 'rag:documents-get',
+  /** invoke: incrementally scan the configured root */
+  ragScan: 'rag:scan',
+  /** invoke: discard and rebuild the configured root */
+  ragRebuild: 'rag:rebuild',
+  /** main -> renderer: RagStatus progress */
+  ragStatus: 'rag:status',
   /** invoke: () => SessionsFile — load persisted sessions */
   sessionsLoad: 'sessions:load',
   /** send: (SessionsFile) — persist sessions (debounced by renderer) */
