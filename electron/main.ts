@@ -1,3 +1,4 @@
+import { shouldNotifyWindowHidden } from '../shared/windowNoticePolicy';
 import { applyContentProtection, readContentProtection } from './contentProtection';
 /**
  * MeetingCopilot main process: overlay window, stealth, hotkeys,
@@ -369,7 +370,11 @@ function bootstrap(): void {
 
   /** one-shot balloon the first time the window disappears (spec §A) */
   function noticeWindowHidden(): void {
-    if (!tray.exists || settings.data.ui.trayNoticeShown) return;
+    const protection = readContentProtection(win, protectionStatus);
+    if (!shouldNotifyWindowHidden({
+      trayExists: tray.exists, alreadyShown: !!settings.data.ui.trayNoticeShown,
+      actualProtection: protection.actual, protectionRequested: protection.requested,
+    })) return;
     settings.applyPatch({ ui: { trayNoticeShown: true } });
     const t = T();
     tray.notifyHidden(t.trayNoticeTitle, t.trayNoticeBody);
