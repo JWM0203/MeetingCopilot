@@ -1,7 +1,9 @@
 /** No-secret source/packaged boot + preload + IPC gate. No GPU bypass. */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { randomBytes } from 'node:crypto';
+import { readSmokeEvidence } from './smoke-evidence.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +38,7 @@ function killTree(child) {
   } catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
 }
 async function runScenario(scenario) {
+  const nonce = randomBytes(32).toString('hex');
   const userData = mkdtempSync(join(tmpdir(), SMOKE_PROFILE_PREFIX));
   // Explicit unconfigured cloud backend: no model download, sidecar, key, or provider request.
   if (scenario.ipc) writeFileSync(join(userData, 'settings.json'), JSON.stringify({
@@ -43,44 +46,91 @@ async function runScenario(scenario) {
     asr: { backend: 'cloud' }, ui: { lang: 'en', autoLaunch: false },
   }));
   log(`\n===== ${scenario.name} =====\n`);
-  let child;
+  const evidencePath = join(userData, 'smoke-evidence.jsonl');
+  let child, actualPid, cleaned = false;
+  const inheritedEnv = isolatedEnvironment(process.env);
+  for (const key of Object.keys(inheritedEnv)) {
+    if (key.toUpperCase() === 'ELECTRON_RENDERER_URL') delete inheritedEnv[key];
+  }
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    if (child) killTree(child);
+    // NSIS may have exited before its child. Only a nonce-validated application
+    // PID is eligible for this fallback; never kill by executable name.
+    if (actualPid && actualPid !== child?.pid) {
+      try {
+        if (process.platform === 'win32') execFileSync('taskkill', ['/pid', String(actualPid), '/T', '/F'], { stdio: 'ignore' });
+        else process.kill(actualPid, 'SIGKILL');
+      } catch { /* already reaped by the wrapper's process tree */ }
+    }
+  };
   try {
     const result = await new Promise((resolveRun) => {
-      let output = '', done = false, settleTimer, exitCode = null, signal = null;
+      let output = '', done = false, settleTimer, evidenceTimer, exitCode = null, signal = null;
+      let evidence = { ready: false, output: '', pid: undefined };
       const finish = (reason) => {
         if (done) return;
         done = true;
-        clearTimeout(timer); clearTimeout(settleTimer);
-        killTree(child);
-        setTimeout(() => resolveRun({ output, reason, exitCode, signal }), 800);
+        clearTimeout(timer); clearTimeout(settleTimer); clearInterval(evidenceTimer);
+        log(`[smoke] cleanup begins reason=${reason} at=${new Date().toISOString()}\n`);
+        cleanup();
+        setTimeout(() => resolveRun({ output: output + '\n' + evidence.output, reason, exitCode, signal }), 800);
       };
       const timer = setTimeout(() => finish('timeout'), timeoutMs);
       child = spawn(exe, source ? [root] : [], {
         cwd: dirname(exe), detached: process.platform !== 'win32', windowsHide: true,
-        env: { ...isolatedEnvironment(process.env), MC_USERDATA: userData, MC_E2E_LLM: 'no-secret smoke', ...(scenario.ipc ? { MC_SMOKE_NATIVE: '1' } : {}) },
+        env: { ...inheritedEnv, MC_USERDATA: userData, MC_SMOKE_NONCE: nonce, MC_E2E_LLM: 'no-secret smoke', ...(scenario.ipc ? { MC_SMOKE_NATIVE: '1' } : {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       const collect = (chunk) => {
         const text = chunk.toString(); output += text; log(text);
         if (done) return;
         if (FATAL_MARKERS.some((marker) => output.includes(marker))) return finish('fatal');
-        if (!settleTimer && scenario.readyMarkers.every((marker) => output.includes(marker))) {
-          settleTimer = setTimeout(() => finish('ready'), 3000);
+      };
+      const inspectEvidence = () => {
+        if (done || !existsSync(evidencePath)) return;
+        try {
+          evidence = readSmokeEvidence(readFileSync(evidencePath, 'utf8'), nonce, !!scenario.ipc);
+          actualPid = evidence.pid;
+          if (evidence.pid) process.kill(evidence.pid, 0); // real app, not just the NSIS wrapper
+          if (evidence.ready && !settleTimer) {
+            log(`[smoke] nonce-bound IPC evidence ready pid=${evidence.pid} at=${new Date().toISOString()}\n`);
+            settleTimer = setTimeout(() => {
+              inspectEvidence();
+              if (!done && evidence.ready) finish('ready');
+            }, 3000);
+          }
+        } catch (error) {
+          log(`evidence failure: ${error.message}\n`);
+          finish('evidence-failure');
         }
       };
+      evidenceTimer = setInterval(inspectEvidence, 100);
       child.stdout.on('data', collect); child.stderr.on('data', collect);
       child.on('error', (error) => { log(`spawn error: ${error.message}\n`); finish('spawn-error'); });
       child.on('exit', (code, sig) => {
         // Do not turn our intentional cleanup kill into an application crash.
-        if (!done) { exitCode = code; signal = sig; log(`${exitDiagnostic(code, sig)}\n`); finish('exit'); }
+        if (!done) {
+          // Capture a validated child PID for cleanup even if the launcher exits
+          // before the first polling tick. Exit remains a failure, never a pass.
+          inspectEvidence();
+          exitCode = code; signal = sig; log(`${exitDiagnostic(code, sig)}\n`); finish('exit');
+        }
       });
     });
+    if (existsSync(evidencePath)) {
+      // Nonce removed from uploaded evidence; never upload the complete profile.
+      const evidenceLog = readFileSync(evidencePath, 'utf8').replaceAll(nonce, '<nonce>');
+      writeFileSync(join(logDir, `${label}-${scenario.ipc ? 'main' : 'setup'}-evidence.jsonl`), evidenceLog);
+      log(`\n[evidence]\n${evidenceLog}`);
+    }
     const failure = smokeFailure(result, scenario);
     if (failure) throw new Error(`${scenario.name}: ${failure}\n${result.output.split(/\r?\n/).slice(-25).join('\n')}`);
-    if (!readdirSync(userData).some((name) => name !== 'settings.json')) throw new Error('MC_USERDATA not honored: no runtime files');
+    if (!readdirSync(userData).some((name) => name !== 'settings.json' && name !== 'smoke-evidence.jsonl')) throw new Error('MC_USERDATA not honored: no runtime files');
     console.log(`SMOKE_OK ${label}: ${scenario.name}`);
   } finally {
-    if (child) killTree(child);
+    cleanup();
     rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   }
 }

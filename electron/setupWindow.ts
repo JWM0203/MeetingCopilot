@@ -1,3 +1,4 @@
+import { writeSmokeEvidence } from './smokeEvidence';
 /**
  * First-run setup window (the onboarding wizard).
  *
@@ -94,6 +95,7 @@ export function createSetupWindow(): BrowserWindow {
     );
   }
 
+  writeSmokeEvidence('setup-window');
   console.log(SETUP_WINDOW_MARKER);
   return win;
 }

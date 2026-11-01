@@ -18,6 +18,7 @@ import {
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { release } from 'os';
 import { createRequire } from 'module';
+import { writeSmokeEvidence } from './smokeEvidence';
 import { basename, join, resolve } from 'path';
 import {
   captureKindForPlatform,
@@ -461,8 +462,14 @@ function bootstrap(): void {
         const js = `(async()=>{const d=[];const done=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{if(e.kind==='delta')d.push(e.text);else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join('')});}else if(e.kind==='error'){off();r({ok:false,error:e.message});}});});window.mc.llmAsk({requestId:'e2e-llm',mode:'free',freeQuestion:${JSON.stringify(q)},recentTranscript:[]});return await done;})()`;
         void win?.webContents
           .executeJavaScript(js, true)
-          .then((r) => console.log('[e2e-llm]', JSON.stringify(r)))
-          .catch((e) => console.log('[e2e-llm] threw', (e as Error).message));
+          .then((r) => {
+            writeSmokeEvidence('llm-ipc', { ok: r.ok, error: r.error });
+            console.log('[e2e-llm]', JSON.stringify(r));
+          })
+          .catch((e) => {
+            writeSmokeEvidence('fatal', { stage: 'llm-ipc' });
+            console.log('[e2e-llm] threw', (e as Error).message);
+          });
       }
       // Visual QA of the main window (same spirit as MC_SETUP_SHOT for the
       // wizard): open the settings panel, let it paint, capture a PNG.
@@ -617,6 +624,20 @@ function bootstrap(): void {
     });
   }
 
+  if (process.env.MC_SMOKE_NONCE) {
+    app.on('web-contents-created', (_event, contents) => {
+      contents.on('render-process-gone', (_event, details) => {
+        writeSmokeEvidence('fatal', { stage: 'renderer-gone', reason: details.reason, exitCode: details.exitCode });
+      });
+      contents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+        if (isMainFrame) writeSmokeEvidence('fatal', { stage: 'renderer-load', code });
+      });
+    });
+    app.on('child-process-gone', (_event, details) => {
+      writeSmokeEvidence('child-process-gone', { type: details.type, reason: details.reason, exitCode: details.exitCode });
+    });
+  }
+
   app.whenReady().then(() => {
     // Explicit no-secret CI probe: load the actual N-API binary in Electron,
     // including packaged asar-unpacked resolution. No model or inference runs.
@@ -626,11 +647,13 @@ function bootstrap(): void {
           listSupportedBackends(): { name: string }[];
         };
         const backends = ort.listSupportedBackends().map((backend) => backend.name);
+        writeSmokeEvidence('native-loaded', { platform: process.platform, arch: process.arch, backends });
         console.log('[smoke-native] loaded', JSON.stringify({ platform: process.platform, arch: process.arch, backends }));
       } catch (error) {
         // This hook is opt-in only; loader diagnostics contain package paths,
         // never a request, credential, transcript, or knowledge document.
         const failure = error as NodeJS.ErrnoException;
+        writeSmokeEvidence('fatal', { stage: 'native-load', code: failure.code ?? 'LOAD_ERROR' });
         console.error('[smoke-native] failed', failure.code ?? 'LOAD_ERROR', failure.message);
         app.exit(1);
         return;
@@ -796,6 +819,7 @@ function bootstrap(): void {
       // bridge is live. tools/packaged-smoke.mjs asserts it.
       if (!wizardReadyLogged && setupWin && e.sender === setupWin.webContents) {
         wizardReadyLogged = true;
+        writeSmokeEvidence('setup-ipc');
         console.log(SETUP_READY_MARKER);
       }
       return settings.getOnboarding();

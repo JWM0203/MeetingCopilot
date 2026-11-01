@@ -81,3 +81,23 @@ A premature exit, timeout (90 seconds per scenario), packaging fatal marker,
 wrong startup path or invalid IPC response fails the gate. Child process trees
 and throwaway profiles are cleaned up; logs remain. Regression verdict tests:
 `npx --no-install vitest run test/smoke-verdict.spec.ts`.
+
+### Portable launchers without inherited stdout
+
+The NSIS portable wrapper uses `ExecWait` for the extracted executable. Its
+stdout is not accepted as the sole readiness transport: the actual Electron
+main process writes nonce-bound JSONL events inside fresh `MC_USERDATA` when
+its setup window is created, the wizard renderer calls onboarding IPC, the
+native binding loads, and the LLM renderer IPC returns its expected no-key
+error. Every launch has a new random nonce; stale, mixed-process, malformed,
+wrong-path and renderer-failure evidence fails the gate. A live process alone
+never counts as readiness. Both real callback evidence and application process
+liveness must survive the three-second settling window; wrapper exit and the
+90-second timeout still fail. No timeout or GPU workaround was added.
+
+Only the evidence file (nonce redacted), not the private profile, is retained.
+Logs mark the start of intentional process-tree cleanup so a GPU/child-process
+warning during teardown can be distinguished from a pre-cleanup failure. Native
+module loading and boot IPC still do **not** establish GPU inference or visual
+rendering correctness. Windows artifact stages now collect unpacked, portable
+and installed/uninstall outcomes independently and fail the job if any fail.
