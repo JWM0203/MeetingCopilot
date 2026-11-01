@@ -1,5 +1,6 @@
 /** Isolated desktop-capture diagnostic. No production hooks or capture API replacements. */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,6 +24,21 @@ writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:
 let app,page,recorder,recorderExit;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
+async function requestStealth(requested) {
+ const observation={requested,ms:Date.now(),pageUrl:page.url()};
+ report.toggleRequests??=[];report.toggleRequests.push(observation);
+ const pageWindow=await app.browserWindow(page);
+ observation.pageWindow=await pageWindow.evaluate(w=>({id:w.id,webContentsId:w.webContents.id,handle:w.getNativeWindowHandle().readBigUInt64LE().toString(),url:w.webContents.getURL()}));
+ await pageWindow.dispose();
+ const windows=()=>app.evaluate(({BrowserWindow,app})=>({userData:app.getPath('userData'),selectedMain:globalThis.__captureMain,windows:BrowserWindow.getAllWindows().map(w=>({id:w.id,webContentsId:w.webContents.id,url:w.webContents.getURL(),visible:w.isVisible(),protected:w.isContentProtected(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))}));
+ observation.before={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows()};
+ observation.returned=await page.evaluate(on=>window.mc.setStealth(on),requested);
+ observation.after={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows()};
+ assert.equal(observation.returned,requested,'production IPC return must equal requested boolean');
+ assert.equal(observation.after.settingsStealth,requested,'production settings readback must equal requested boolean');
+ assert.equal(observation.pageWindow.id,observation.after.selectedMain,'Playwright renderer must correspond to selected main HWND');
+ assert.equal(resolve(observation.after.userData),resolve(profile),'production app must use isolated profile');
+}
 async function affinity(expected, { observeOnly = false } = {}) {
  const until=Date.now()+8000;
  do {
@@ -37,6 +53,7 @@ async function affinity(expected, { observeOnly = false } = {}) {
 }
 try {
  assert.equal(process.platform,'win32','BLOCKED: requires a Windows desktop');
+ report.build={commit:process.env.GITHUB_SHA,files:Object.fromEntries(['out/main/index.js','out/preload/index.js'].map(path=>[path,createHash('sha256').update(readFileSync(join(root,path))).digest('hex')]))};
  const env=isolatedEnvironment(process.env);delete env.ELECTRON_RENDERER_URL;
  app=await _electron.launch({args:[root],cwd:root,env:{...env,MC_USERDATA:profile},timeout:45000});
  page=await app.firstWindow();await page.locator('select.session-select').waitFor();
@@ -60,7 +77,7 @@ try {
  recorderExit=new Promise(resolve=>{recorder.on('exit',(code,signal)=>resolve({code,signal}));recorder.on('error',error=>resolve({code:null,error:error.message}));});
  await poll(()=>existsSync(join(output,'ready')),'native GDI recorder did not produce its first frame');
  event('baseline');await sleep(1200);
- await page.evaluate(()=>window.mc.setStealth(false));await affinity(false,{observeOnly:true});
+ await requestStealth(false);await affinity(false,{observeOnly:true});
  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.fromId(globalThis.__captureMain);w.show();w.focus();});
  // Hidden HWND affinity can lag the requested property until normal show/composition.
  // Preserve the hidden readback, then require actual native 0 before accepting control.
@@ -68,7 +85,7 @@ try {
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
  await page.keyboard.press('Escape');
- event('enable-protection-request');await page.evaluate(()=>window.mc.setStealth(true));await affinity(true);await sleep(400);
+ event('enable-protection-request');await requestStealth(true);await affinity(true);await sleep(400);
  event('protected-start');await sleep(700);
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();event('protected-hover');await sleep(900);
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'New session',exact:true}).focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');event('protected-keyboard-focus');await sleep(700);await page.keyboard.press('Escape');
@@ -86,7 +103,7 @@ try {
  event('protected-region-overlay');await sleep(1000);await region.keyboard.press('Escape');
  await poll(()=>page.evaluate(()=>window.__captureRegionResult==='cancelled'),'region cancellation not completed');event('region-cancelled');await sleep(1000);
  event('protected-end');
- await page.evaluate(()=>window.mc.setStealth(false));await affinity(false);event('visible-post-control');await sleep(1200);
+ await requestStealth(false);await affinity(false);event('visible-post-control');await sleep(1200);
  report.sequenceCompleted=true;
 } catch(error) {report.error=error.stack;process.exitCode=1;console.error(error);}
 finally {
