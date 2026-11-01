@@ -40,3 +40,23 @@ it('exercises real non-ASCII profile and Windows installation paths', () => {
   const windowsScript = readFileSync(join(__dirname, '..', 'tools', 'windows-package-smoke.ps1'), 'utf8');
   expect(windowsScript).toContain("'mc installer smoke 会议'");
 });
+
+it('reuses only the existing root-owned sandbox helper without weakening runner security', () => {
+  const workflow = readFileSync(join(__dirname, '..', '.github', 'workflows', 'desktop-gates.yml'), 'utf8');
+  const step = workflow.split('- name: Use existing trusted Linux sandbox helper')[1]?.split('- name:')[0] ?? '';
+  expect(step).toContain('helper=/opt/google/chrome/chrome-sandbox');
+  expect(step).toContain('test -f "$helper" && test ! -L "$helper" && test -x "$helper"');
+  expect(step).toContain('stat -c \'%u:%g:%a\' "$helper"');
+  expect(step).toContain("= '0:0:4755'");
+  expect(step).toContain('exit 1');
+  expect(step).toContain('CHROME_DEVEL_SANDBOX=$helper');
+  expect(step).not.toMatch(/\b(?:sudo|chmod|chown|sysctl|apparmor_parser)\b|--no-sandbox|--disable-setuid-sandbox/);
+  expect(isolatedEnvironment({ CHROME_DEVEL_SANDBOX: '/opt/google/chrome/chrome-sandbox' }))
+    .toEqual({ CHROME_DEVEL_SANDBOX: '/opt/google/chrome/chrome-sandbox' });
+});
+
+it('uses the long quoted builder config override for PowerShell NSIS packaging', () => {
+  const workflow = readFileSync(join(__dirname, '..', '.github', 'workflows', 'desktop-gates.yml'), 'utf8');
+  expect(workflow).toContain('"--config.nsis.runAfterFinish=false"');
+  expect(workflow).not.toContain(' -c.nsis.runAfterFinish=false');
+});

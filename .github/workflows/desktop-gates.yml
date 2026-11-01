@@ -39,6 +39,20 @@ jobs:
         run: npm run build
       - name: Verify transformer patch
         run: npm run verify:patched
+      # Chromium documents reusing the already-installed Chrome SUID helper as
+      # the sandbox-preserving option on Ubuntu's restricted-userns runners.
+      # Never chmod/chown a downloaded binary or disable AppArmor/the sandbox.
+      - name: Use existing trusted Linux sandbox helper
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          helper=/opt/google/chrome/chrome-sandbox
+          test -f "$helper" && test ! -L "$helper" && test -x "$helper"
+          test "$(stat -c '%u:%g:%a' "$helper")" = '0:0:4755' || {
+            echo 'Existing root-owned Chrome sandbox helper unavailable; no security settings were changed.' >&2
+            exit 1
+          }
+          echo "CHROME_DEVEL_SANDBOX=$helper" >> "$GITHUB_ENV"
       - name: Source app boot and IPC (Linux virtual display)
         if: runner.os == 'Linux'
         run: xvfb-run -a node tools/packaged-smoke.mjs --source
@@ -47,7 +61,7 @@ jobs:
         run: node tools/packaged-smoke.mjs --source
       - name: Build Windows installer and portable (unsigned)
         if: runner.os == 'Windows'
-        run: npx --no-install electron-builder --win nsis portable --x64 --publish never -c.nsis.runAfterFinish=false
+        run: npx --no-install electron-builder --win nsis portable --x64 --publish never "--config.nsis.runAfterFinish=false"
       - name: Exercise unpacked, real portable, NSIS install/launch/uninstall
         if: runner.os == 'Windows'
         shell: pwsh
