@@ -239,7 +239,7 @@ export function AnswerSession({
                   <span className="answer-error">{turn.error}</span>
                 ) : (
                   <>
-                    {turn.text || (turn.kind === 'vision' ? t.answer.visionWaiting : t.answer.genWaiting)}
+                    {turn.text || (turn.status === 'streaming' ? (turn.kind === 'vision' ? t.answer.visionWaiting : t.answer.genWaiting) : t.answer.emptyDone)}
                     {turn.status === 'streaming' && <span className="cursor">▍</span>}
                   </>
                 )}

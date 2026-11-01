@@ -222,6 +222,8 @@ try {
     await page.locator('.turn').last().getByRole('button', { name: 'Stop', exact: true }).click();
     await poll(async () => (await state()).cancels.length === 1, 'cancellation IPC');
     assert.equal(await page.locator('.turn').last().locator('.cursor').count(), 0);
+    await page.locator('.turn').last().getByText('Generation ended without an answer.', { exact: true }).waitFor();
+    assert.doesNotMatch(await page.locator('.turn').last().locator('.turn-body').innerText(), /Generating|Analyzing/);
     await shot('07-provider-retry-cancel-mock');
   });
   await test('mock RAG disable during indexing ignores stale result; modal hint layering', async () => {
