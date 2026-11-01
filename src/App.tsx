@@ -73,6 +73,9 @@ function deriveName(text: string, fallback: string): string {
 
 export function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [protectionBusy, setProtectionBusy] = useState(false);
+  const [protectionError, setProtectionError] = useState(false);
+  const [protectionUnknown, setProtectionUnknown] = useState(true);
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -266,8 +269,10 @@ export function App() {
   useEffect(() => {
     void window.mc.getSettings().then((s) => {
       setSettings(s);
+      setProtectionUnknown(typeof s.contentProtection?.actual !== 'boolean');
+      setProtectionError(s.contentProtection?.ok !== true);
       answerLangRef.current = s.llm.answerLang;
-    });
+    }).catch(() => { setProtectionUnknown(true); setProtectionError(true); });
     void window.mc.loadSessions().then((f) => {
       if (f.sessions.length) {
         // heal legacy duplicate segment ids (worker counter used to reset per
@@ -509,10 +514,20 @@ export function App() {
   );
 
   const toggleStealth = useCallback(async () => {
-    if (!settings) return;
-    const on = await window.mc.setStealth(!settings.ui.stealth);
-    setSettings({ ...settings, ui: { ...settings.ui, stealth: on } });
-  }, [settings]);
+    if (!settings || protectionBusy) return;
+    setProtectionBusy(true);
+    try {
+      const result = await window.mc.setStealth(!settings.ui.stealth);
+      // Never label the requested value as active without runtime acknowledgement.
+      const known = typeof result.actual === 'boolean';
+      setProtectionUnknown(!known);
+      if (known) setSettings(current => current ? { ...current, ui: { ...current.ui, stealth: result.actual as boolean } } : current);
+      setProtectionError(!result.ok || !known);
+    } catch {
+      setProtectionUnknown(true);
+      setProtectionError(true);
+    } finally { setProtectionBusy(false); }
+  }, [settings, protectionBusy]);
 
   const toggleAnswerLang = useCallback(async () => {
     if (!settings) return;
@@ -820,13 +835,15 @@ export function App() {
             </select>
           )}
           <button
-            className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
+            className={!protectionUnknown && settings?.ui.stealth ? 'btn btn-on' : 'btn'}
+            disabled={!settings || protectionBusy}
+            aria-pressed={protectionUnknown ? undefined : !!settings?.ui.stealth}
             onClick={() => void toggleStealth()}
             {...hintProps(window.mc.platform === 'darwin'
                 ? t.titlebar.stealthMacTitle
                 : t.titlebar.stealthTitle)}
           >
-            {t.titlebar.stealth(!!settings?.ui.stealth)}
+            {protectionUnknown ? t.titlebar.protectionUnknown : t.titlebar.stealth(!!settings?.ui.stealth)}
           </button>
           <button className="btn" onClick={() => setShowHud((v) => !v)} {...hintProps(t.titlebar.hudTitle)} aria-pressed={showHud}>
             HUD
@@ -842,6 +859,7 @@ export function App() {
           </button>
         </div>
       </header>
+      {protectionError && <div className="upgrade-banner" role="alert">{t.titlebar.protectionFailed}</div>}
 
       {/* grandfathered users (settings.json predates the wizard) get one
           dismissible pointer at the new wizard; wizard-created profiles never

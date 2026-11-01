@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - 'tools/desktop-capture/**'
+      - 'electron/main.ts'
+      - 'electron/contentProtection.ts'
+      - 'electron/preload.ts'
+      - 'shared/protocol.ts'
+      - 'src/App.tsx'
+      - 'src/i18n.tsx'
       - '.github/workflows/desktop-capture.yml'
   workflow_dispatch:
 permissions:

@@ -28,3 +28,10 @@ Electron documents that Windows 10 before version 2004 may capture a black windo
 The status bar now names the saved ASR backend; local mode does not use saved cloud-ASR keys. A text-LLM connection timeout does not establish an ASR endpoint fault. Cloud/CPU/local-sidecar readiness is no longer displayed as a blanket “GPU” success claim.
 
 Linux CI uses the stock Ubuntu 22.04 runner and the default Electron sandbox. Ubuntu 24.04 source startup failed with a sandbox-helper setup error; reusing its preinstalled helper also failed the root/mode safety guard. No permissions, AppArmor settings or sandbox protections were weakened. Ubuntu 22.04 still needs its own successful exact-commit boot/package result and does not prove Ubuntu 24.04 compatibility.
+
+
+## Runtime capture-protection acknowledgement
+
+A native Windows Server diagnostic observed both runtime toggle directions fail to change the actual window: the old API returned the requested boolean and saved it even though Electron/native affinity retained the previous state. With startup OFF, harmless canary text remained visible in native GDI frames after requesting ON. Those observations used direct preload calls, not a demonstrated toolbar ON label. The underlying cause is not yet established; release remains blocked on this capture-protection issue.
+
+The mitigation now checks Electron's actual state after startup and runtime requests, saves the observed state, and returns a structured failure instead of false success. The toolbar retains the observed state, shows Unknown when readback fails, and displays a persistent warning to stop sharing sensitive content and restart/retest. A successful Electron readback is **not** proof that a particular recorder excludes the window. This change does not repair or bypass the underlying native capture behavior; native GDI and actual toolbar tests must report their real outcome, including BLOCKED.

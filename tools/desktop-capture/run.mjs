@@ -25,20 +25,33 @@ writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:
 let app,page,recorder,recorderExit,postApp,postProfile;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
-async function requestStealth(requested) {
- const observation={requested,ms:Date.now(),pageUrl:page.url()};
- report.toggleRequests??=[];report.toggleRequests.push(observation);
+async function requestProtectionViaToolbar() {
+ const observation={requested:true,input:'actual Playwright click on production toolbar button',ms:Date.now(),pageUrl:page.url()};
+ report.uiProtectionRequest=observation;
  const pageWindow=await app.browserWindow(page);
  observation.pageWindow=await pageWindow.evaluate(w=>({id:w.id,webContentsId:w.webContents.id,handle:w.getNativeWindowHandle().readBigUInt64LE().toString(),url:w.webContents.getURL()}));
  await pageWindow.dispose();
  const windows=()=>app.evaluate(({BrowserWindow,app})=>({userData:app.getPath('userData'),selectedMain:globalThis.__captureMain,windows:BrowserWindow.getAllWindows().map(w=>({id:w.id,webContentsId:w.webContents.id,url:w.webContents.getURL(),visible:w.isVisible(),protected:w.isContentProtected(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()}))}));
  observation.before={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows()};
- observation.returned=await page.evaluate(on=>window.mc.setStealth(on),requested);
- observation.after={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows()};
- assert.equal(observation.returned,requested,'production IPC return must equal requested boolean');
- assert.equal(observation.after.settingsStealth,requested,'production settings readback must equal requested boolean');
- assert.equal(observation.pageWindow.id,observation.after.selectedMain,'Playwright renderer must correspond to selected main HWND');
+ const toggle=page.getByRole('button',{name:/^(Stealth:(On|Off)|Capture protection: unknown)$/});
+ const warning=page.getByRole('alert').filter({hasText:'Capture protection could not be applied or confirmed.'});
+ assert.equal(await toggle.innerText(),'Stealth:Off');
+ assert.equal(await warning.count(),0,'fresh OFF baseline must not already contain the failure warning');
+ await toggle.click();
+ await poll(async()=>await warning.count()>0 || await toggle.getAttribute('aria-pressed')==='true','toolbar protection operation did not resolve');
+ await poll(()=>toggle.isEnabled(),'toolbar protection operation still pending');
+ observation.after={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows(),label:await toggle.innerText(),ariaPressed:await toggle.getAttribute('aria-pressed')};
+ assert.equal(observation.pageWindow.id,observation.after.selectedMain,'real UI must correspond to selected main HWND');
  assert.equal(resolve(observation.after.userData),resolve(profile),'production app must use isolated profile');
+ if(await warning.count()>0){
+  observation.warning=await warning.innerText();
+  assert.equal(observation.after.label,'Stealth:Off');assert.equal(observation.after.ariaPressed,'false');assert.equal(observation.after.settingsStealth,false);
+  await affinity(false);
+  report.uiGuardVerified=true;
+  event('ui-protection-failure-truthfully-reported',{label:observation.after.label,actualProtection:false});await sleep(1800);
+  throw new Error('BLOCKED: runtime protection could not be enabled. Actual toolbar-click guard verified: stays OFF with persistent warning, settings OFF, native affinity0. This is failure-handling evidence, NOT a privacy pass.');
+ }
+ assert.equal(observation.after.label,'Stealth:On');assert.equal(observation.after.ariaPressed,'true');assert.equal(observation.after.settingsStealth,true);
 }
 async function affinity(expected, { observeOnly = false } = {}) {
  const until=Date.now()+8000;
@@ -87,7 +100,7 @@ try {
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
  await page.keyboard.press('Escape');
- event('enable-protection-request');await requestStealth(true);await affinity(true);await sleep(400);
+ event('enable-protection-request');await requestProtectionViaToolbar();await affinity(true);await sleep(400);
  event('protected-start');await sleep(700);
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();event('protected-hover');await sleep(900);
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'New session',exact:true}).focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');event('protected-keyboard-focus');await sleep(700);await page.keyboard.press('Escape');

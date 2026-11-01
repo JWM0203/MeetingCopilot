@@ -68,6 +68,8 @@ const zh = {
     micDeviceTitle: '麦克风设备',
     micDefault: '默认麦',
     stealth: (on: boolean) => `隐身${on ? '开' : '关'}`,
+    protectionUnknown: '采集保护：状态未知',
+    protectionFailed: '采集保护更改未生效或无法确认。当前不能依赖它隐藏窗口；请停止共享敏感内容，重启应用后重新测试实际录屏/共享。',
     stealthTitle: '窗口采集保护（尽力而为）：请先用实际共享或录屏测试；不会隐藏光标或切换焦点',
     stealthMacTitle: '采集保护：macOS 新版 ScreenCaptureKit 仍可能捕获窗口，不能保证完全隐身',
     hudTitle: '延迟 HUD',
@@ -516,6 +518,8 @@ const en: Dict = {
     micDeviceTitle: 'Microphone device',
     micDefault: 'Default mic',
     stealth: (on: boolean) => `Stealth:${on ? 'On' : 'Off'}`,
+    protectionUnknown: 'Capture protection: unknown',
+    protectionFailed: 'Capture protection could not be applied or confirmed. Do not rely on it to hide this window. Stop sharing sensitive content, restart the app, and test your actual recording/sharing route again.',
     stealthTitle: 'Best-effort window capture protection: test your actual sharing/recording app; cursor and focus changes are not hidden',
     stealthMacTitle:
       'Capture protection: recent macOS ScreenCaptureKit versions may still capture this window; full stealth is not guaranteed',

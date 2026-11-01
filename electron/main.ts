@@ -1,3 +1,4 @@
+import { applyContentProtection, readContentProtection } from './contentProtection';
 /**
  * MeetingCopilot main process: overlay window, stealth, hotkeys,
  * settings, IPC hub, ASR worker host. PLAN.en.md §5.
@@ -115,6 +116,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function bootstrap(): void {
   let win: BrowserWindow | null = null;
+  let protectionStatus: import('../shared/protocol').ContentProtectionResult = { ok: false, requested: false, actual: null, code: 'unavailable' };
   /** first-run wizard window; mutually exclusive with `win` until completion */
   let setupWin: BrowserWindow | null = null;
   /** the wizard was reopened from a running main window (设置 → 重新运行配置
@@ -142,6 +144,9 @@ function bootstrap(): void {
   function publicSettings(): PublicSettings {
     const pub = settings.getPublic();
     pub.knowledge = { chars: knowledge.chars };
+    // Settings are not runtime proof: expose the existing main window's actual state.
+    pub.contentProtection = readContentProtection(win, protectionStatus);
+    if (pub.contentProtection.actual !== null) pub.ui.stealth = pub.contentProtection.actual;
     return pub;
   }
 
@@ -440,7 +445,7 @@ function bootstrap(): void {
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');
-    win.setContentProtection(settings.data.ui.stealth);
+    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }));
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
 
@@ -774,12 +779,13 @@ function bootstrap(): void {
       if (patch.rag?.rootPath !== undefined) {
         patch = { ...patch, rag: { ...patch.rag, rootPath: validatedRagRoot(patch.rag.rootPath) } };
       }
+      if (patch.ui?.stealth !== undefined) {
+        const result = protectionStatus = applyContentProtection(win, patch.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }));
+        if (!result.ok) throw new Error('Content protection change was not applied. Restart the app and verify before sharing.');
+      }
       settings.applyPatch(patch);
       if (patch.ui?.hotkeyToggle !== undefined || patch.ui?.hotkeyShot !== undefined) {
         registerHotkeys();
-      }
-      if (patch.ui?.stealth !== undefined) {
-        win?.setContentProtection(patch.ui.stealth);
       }
       // the tray menu is a snapshot: rebuild it in the newly chosen language
       if (patch.ui?.lang !== undefined) refreshTray();
@@ -1091,10 +1097,10 @@ function bootstrap(): void {
         return null;
       }
     });
-    ipcMain.handle(IPC.stealthSet, (_e, on: boolean) => {
-      settings.applyPatch({ ui: { stealth: on } });
-      win?.setContentProtection(on);
-      return on;
+    ipcMain.handle(IPC.stealthSet, (event, on: boolean) => {
+      // Do not silently succeed with a missing/stale main-window reference.
+      const target = win && !win.isDestroyed() && win.webContents === event.sender ? win : null;
+      return protectionStatus = applyContentProtection(target, on, actual => settings.applyPatch({ ui: { stealth: actual } }));
     });
     ipcMain.on(IPC.winHide, () => win?.hide());
     ipcMain.on(IPC.appQuit, () => app.quit());

@@ -11,6 +11,13 @@ export type { TrayCommand, TrayRendererCommand } from './trayMenu';
 import type { RagDocumentStatus, RagScope, RagSourceRef, RagStatus } from './rag';
 export type { RagDocumentStatus, RagScope, RagSourceRef, RagStatus } from './rag';
 
+export interface ContentProtectionResult {
+  ok: boolean;
+  requested: boolean;
+  actual: boolean | null;
+  code?: 'unavailable' | 'not-applied' | 'persistence-failed';
+}
+
 // ---------- Settings ----------
 
 export type AsrLanguage = 'auto' | 'chinese' | 'english';
@@ -244,6 +251,8 @@ export interface SettingsFile {
 
 /** What the renderer is allowed to see (no secrets). */
 export interface PublicSettings {
+  /** Runtime Electron acknowledgement only; not capture-exclusion proof. */
+  contentProtection?: ContentProtectionResult;
   version: 2;
   /**
    * true when the OS credential store is unavailable and API keys can only be
@@ -559,7 +568,7 @@ export const IPC = {
   regionRect: 'region:rect',
   /** send (overlay→main): () — cancel selection */
   regionCancel: 'region:cancel',
-  /** invoke: (boolean) => boolean — toggles content protection live */
+  /** invoke: (boolean) => ContentProtectionResult — verified Electron state, not capture proof */
   stealthSet: 'stealth:set',
   /** send: hide window */
   winHide: 'win:hide',

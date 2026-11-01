@@ -9,6 +9,8 @@ def listing(tag, data): return chunk(b'LIST',tag+data)
 report = {'verdict':'BLOCKED','limits':['GDI desktop only; not DXGI, Windows 11, macOS ScreenCaptureKit or meeting remote viewer.','Finite sampled sequence; cannot rule out sub-frame flashes or leakage outside canary/geometry.','Canary/pattern metrics flag suspicious pixels, not general-purpose OCR. Review video and selected frames.','Startup before baseline and intentional protection-setting transition excluded from protected assertion.']}
 try:
     run, host = load('run.json'), load('native.json')
+    report['uiGuardVerified']=run.get('uiGuardVerified',False)
+    report['knownRuntimeOffIssue']=run.get('knownRuntimeOffIssue')
     frames=[json.loads(l) for l in (out/'frames.jsonl').read_text(encoding='utf-8-sig').splitlines()]
     assert len(frames)>30, 'too few native desktop frames'
     events=run['events']
