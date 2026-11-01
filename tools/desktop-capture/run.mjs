@@ -13,15 +13,16 @@ const output = join(root, 'release/smoke/desktop-capture');
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 const report = { backend: 'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)', requestedFps: 30, events: [],
+  knownRuntimeOffIssue: 'v3: correct main HWND stayed protected/native17 despite production IPC false and settings false. Not fixed or bypassed by this diagnostic; this sequence uses fresh OFF startup and separate fresh OFF post-control.',
   scope: 'Controlled Windows Server desktop, built source Electron app; NOT Windows 11, DXGI, ScreenCaptureKit or a meeting remote-view test. Synthetic public canary content only. Renderer/IPC actions are explicitly labelled; hide/show uses real OS keybd_event input.' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const poll = async (fn, label) => { const end=Date.now()+15000; while(Date.now()<end) {if(await fn())return; await sleep(75);} throw new Error(`BLOCKED: ${label}`); };
 const native = args => execFileSync('powershell.exe', ['-NoProfile','-File',join(import.meta.dirname,'native.ps1'),...args], {encoding:'utf8',timeout:10000}).trim();
 const profile = mkdtempSync(join(tmpdir(), 'mc-native-capture-'));
-writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:true,hotkeyToggle:'Control+Alt+F10'}}));
+writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:false,hotkeyToggle:'Control+Alt+F10'}}));
 const seed={id:'capture-fixture',name:'PUBLIC_CAPTURE_CANARY',createdAt:1,turns:[{id:'canary',kind:'free',label:'PUBLIC CAPTURE TEST',text:'PUBLIC_CANARY_7391 — synthetic desktop capture compatibility test',status:'done'}],segments:[],resumeText:'',jdText:'',memo:''};
 writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:seed.id,sessions:[seed]}));
-let app,page,recorder,recorderExit;
+let app,page,recorder,recorderExit,postApp,postProfile;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
 const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
 async function requestStealth(requested) {
@@ -77,10 +78,11 @@ try {
  recorderExit=new Promise(resolve=>{recorder.on('exit',(code,signal)=>resolve({code,signal}));recorder.on('error',error=>resolve({code:null,error:error.message}));});
  await poll(()=>existsSync(join(output,'ready')),'native GDI recorder did not produce its first frame');
  event('baseline');await sleep(1200);
- await requestStealth(false);await affinity(false,{observeOnly:true});
+ report.initialControl={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),window:await state()};
+ assert.equal(report.initialControl.settingsStealth,false);await affinity(false);
  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.fromId(globalThis.__captureMain);w.show();w.focus();});
- // Hidden HWND affinity can lag the requested property until normal show/composition.
- // Preserve the hidden readback, then require actual native 0 before accepting control.
+ // Fresh production startup with explicit fixture protection OFF, not a retry of
+ // the known sticky runtime true-to-false transition. Native 0 is still required.
  await affinity(false);event('visible-positive-control');await sleep(1500);
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
@@ -103,7 +105,21 @@ try {
  event('protected-region-overlay');await sleep(1000);await region.keyboard.press('Escape');
  await poll(()=>page.evaluate(()=>window.__captureRegionResult==='cancelled'),'region cancellation not completed');event('region-cancelled');await sleep(1000);
  event('protected-end');
- await requestStealth(false);await affinity(false);event('visible-post-control');await sleep(1200);
+ // Preserve the observed runtime-off issue; do not bypass it or mark it fixed.
+ report.knownIssue='Prior diagnostic v3: production setStealth(false) returned false and settings became false, but correct main HWND remained protected=true/native affinity17 after normal show and 8s. This run starts fresh OFF, then turns ON; post-control uses a separate fresh OFF production process.';
+ event('fresh-post-control-launch');
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.fromId(globalThis.__captureMain).hide());
+ postProfile=mkdtempSync(join(tmpdir(),'mc-native-post-control-'));
+ writeFileSync(join(postProfile,'settings.json'),JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:false,hotkeyToggle:'',hotkeyShot:''}}));
+ writeFileSync(join(postProfile,'sessions.json'),JSON.stringify({version:1,currentId:seed.id,sessions:[seed]}));
+ postApp=await _electron.launch({args:[root],cwd:root,env:{...env,MC_USERDATA:postProfile},timeout:30000});
+ const postPage=await postApp.firstWindow();await postPage.locator('.turn-body').getByText('PUBLIC_CANARY_7391',{exact:false}).waitFor();
+ report.postControl=await postApp.evaluate(({BrowserWindow,app})=>{const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/index.html'));w.setBounds({x:100,y:100,width:800,height:560});w.show();w.focus();return{userData:app.getPath('userData'),pid:process.pid,id:w.id,url:w.webContents.getURL(),protected:w.isContentProtected(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
+ assert.equal(resolve(report.postControl.userData),resolve(postProfile));
+ report.postControl.native=JSON.parse(native(['-Mode','Affinity','-Handle',report.postControl.handle]));
+ assert.equal(report.postControl.protected,false);assert.equal(report.postControl.native.ok,true);assert.equal(report.postControl.native.affinity,0);
+ await postPage.evaluate(()=>{const marker=document.createElement('div');marker.textContent='PUBLIC_CANARY_7391';marker.style.cssText='position:fixed;bottom:0;left:0;width:300px;height:35px;background:#ff00ff;color:#000;font:20px monospace;z-index:2147483647;pointer-events:none';document.body.append(marker);});
+ event('visible-post-control',{process:'fresh independent unprotected production app',pid:report.postControl.pid});await sleep(1200);
  report.sequenceCompleted=true;
 } catch(error) {report.error=error.stack;process.exitCode=1;console.error(error);}
 finally {
@@ -113,7 +129,9 @@ finally {
   if(report.recorder.timeout){recorder.kill();report.recorder.afterKill=await Promise.race([recorderExit,sleep(3000).then(()=>({timeout:true}))]);}
   if(report.recorder.code!==0){report.error??='BLOCKED: native recorder failed or cleanup timed out';process.exitCode=1;}
  }
+ if(postApp)await Promise.race([postApp.close(),sleep(10000).then(()=>{throw new Error('Post-control close timed out');})]).catch(e=>{report.cleanupError=e.message;postApp.process()?.kill();process.exitCode=1;});
  if(app)await Promise.race([app.close(),sleep(10000).then(()=>{throw new Error('Electron close timed out');})]).catch(e=>{report.cleanupError=e.message;app.process()?.kill();process.exitCode=1;});
  writeFileSync(join(output,'run.json'),JSON.stringify(report,null,2));
  rmSync(profile,{recursive:true,force:true,maxRetries:10,retryDelay:300});
+ if(postProfile)rmSync(postProfile,{recursive:true,force:true,maxRetries:10,retryDelay:300});
 }
