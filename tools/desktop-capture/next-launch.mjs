@@ -57,7 +57,13 @@ try{
  for(let i=0;i<4;i++){const before=await state();execFileSync('powershell.exe',['-NoProfile','-File',join(import.meta.dirname,'native.ps1'),'-Mode','Hotkey'],{timeout:10000});await poll(async()=>(await state()).visible!==before.visible,'actual native hotkey visibility');await affinity(true);event('native-hotkey-confirmed',{iteration:i,...await state()});await sleep(600);}
  event('protected-end');await closeApp();event('normal-quit-before-OFF-relaunch');await launch(false);event('visible-positive-control');await sleep(1500);event('visible-hover-control');
  await preference(true,false);
- for(let cycle=1;cycle<=3;cycle++){await page.evaluate(c=>{const m=document.getElementById('capture-canary');m.style.width=`${300+c*40}px`;m.textContent=`PUBLIC_OFF_CYCLE_${c}`;},cycle);await sleep(300);const start=Date.now();event('OFF-dynamic-redraw',{cycle});await sleep(700);report.roundtripOffControls.push({cycle,start,end:Date.now()});}
+ for(let cycle=1;cycle<=3;cycle++){
+  // Test-only synthetic delta via the real preload subscription/React renderer;
+  // no provider request or API credentials. Native recording remains authoritative.
+  await app.evaluate(({BrowserWindow},cycle)=>BrowserWindow.fromId(globalThis.__captureMain).webContents.send('llm:event',{kind:'delta',requestId:'canary',text:` PUBLIC_RENDER_DELTA_${cycle}`}),cycle);
+  await page.locator('.turn-body').getByText(`PUBLIC_RENDER_DELTA_${cycle}`,{exact:false}).waitFor();
+  (report.conversationRedraw??=[]).push({cycle,ms:Date.now(),transport:'synthetic llm:event delta, real production renderer subscription',text:await page.locator('.turn-body').innerText()});
+  await page.evaluate(c=>{const m=document.getElementById('capture-canary');m.style.width=`${300+c*40}px`;m.textContent=`PUBLIC_OFF_CYCLE_${c}`;},cycle);await sleep(300);const start=Date.now();event('OFF-dynamic-redraw',{cycle});await sleep(700);report.roundtripOffControls.push({cycle,start,end:Date.now()});}
  event('visible-post-control');await sleep(1200);await closeApp();event('normal-quit-before-ON-relaunch');await launch(true);
  const start=Date.now();event('final-protected-start');await sleep(1800);report.additionalProtectedIntervals.push({start,end:Date.now()});event('final-protected-end');report.sequenceCompleted=true;
 }catch(error){report.error=error.stack;process.exitCode=1;console.error(error);}
