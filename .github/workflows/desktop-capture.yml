@@ -1,0 +1,69 @@
+name: Native desktop capture diagnostic
+on:
+  pull_request:
+    paths:
+      - 'tools/desktop-capture/**'
+      - 'electron/main.ts'
+      - 'electron/contentProtection.ts'
+      - 'electron/protectionPreference.ts'
+      - 'electron/settings.ts'
+      - 'src/components/ProtectionPreference.tsx'
+      - 'electron/preload.ts'
+      - 'shared/protocol.ts'
+      - 'src/App.tsx'
+      - 'src/styles.css'
+      - 'src/components/TranscriptPanel.tsx'
+      - 'src/transcriptSelection.ts'
+      - 'src/i18n.tsx'
+      - '.github/workflows/desktop-capture.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-gdi:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+        id: build
+      - name: Record real native Windows desktop and controlled transitions
+        run: node tools/desktop-capture/next-launch.mjs
+      - name: Analyze every sampled frame and package native video
+        if: always()
+        run: python tools/desktop-capture/analyze.py release/smoke/desktop-capture-next-launch
+      - name: Preserve capture evidence, including blocked or anomalous results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-gdi-next-launch-preferences
+          path: release/smoke/desktop-capture-next-launch/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Fresh-startup protected transitions (independent of runtime toggle failure)
+        if: always() && steps.build.outcome == 'success'
+        run: node tools/desktop-capture/run.mjs --startup-protected-transitions
+      - name: Analyze fresh-startup protected desktop frames
+        if: always() && steps.build.outcome == 'success'
+        run: python tools/desktop-capture/analyze.py release/smoke/desktop-capture-startup-protected
+      - name: Preserve separate startup-protected transition evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-gdi-startup-protected-transitions
+          path: release/smoke/desktop-capture-startup-protected/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: State coverage limits
+        if: always()
+        shell: pwsh
+        run: |
+          'Native Windows Server GDI desktop capture diagnostic. Not a Windows 11, DXGI, macOS ScreenCaptureKit, Teams/Feishu/Tencent remote-view pass. See analysis.json and native video; blank or failed controls are BLOCKED, not a pass.' >> $env:GITHUB_STEP_SUMMARY

@@ -21,7 +21,7 @@ describe('targetFromPreset', () => {
       capability: 'text-llm',
       providerId: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       slot: 'llm',
       presetId: 'deepseek.text.fast',
     });
@@ -67,7 +67,7 @@ describe('candidateKeyTest', () => {
       capability: 'text-llm',
       providerId: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       slot: 'llm',
       presetId: 'deepseek.text.fast',
       candidateApiKey: 'sk-abc',

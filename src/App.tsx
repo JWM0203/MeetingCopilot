@@ -1,3 +1,6 @@
+import { ProtectionPreference } from './components/ProtectionPreference';
+import { SurfaceHints } from './components/SurfaceHints';
+import { hintProps } from './surfaceHints';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AnswerLang,
@@ -27,14 +30,13 @@ import { HelpPanel } from './components/HelpPanel';
 import { StatusBar } from './components/StatusBar';
 import { AnswerSession, type AnswerTurn } from './components/AnswerSession';
 import { I18nProvider, getDict, type Dict } from './i18n';
+import type { RagDocumentStatus, RagScope } from '../shared/rag';
+import { KnowledgeScopeDialog } from './components/KnowledgeScopeDialog';
+import { restoreSession } from '../shared/sessionActions';
+import { applyPanelOpacity } from './panelOpacity';
+import { clearError, setError, updateAsrUiState, type AsrUiState } from '../shared/asrUiState';
 
-export interface AsrUiState {
-  phase: 'loading' | 'ready' | 'error';
-  ep?: string;
-  gpuSuspect?: boolean;
-  workerState: 'loading' | 'listening' | 'speech' | 'transcribing' | 'stopped';
-  lastError?: string;
-}
+export type { AsrUiState } from '../shared/asrUiState';
 
 export interface HudStats {
   lastE2eMs?: number;
@@ -72,6 +74,10 @@ function deriveName(text: string, fallback: string): string {
 
 export function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [protectionBusy, setProtectionBusy] = useState(false);
+  const [protectionError, setProtectionError] = useState(false);
+  const [protectionSaveError, setProtectionSaveError] = useState(false);
+  const [protectionUnknown, setProtectionUnknown] = useState(true);
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -86,6 +92,9 @@ export function App() {
   const [partials, setPartials] = useState<{ them?: string; me?: string }>({});
   const [sessions, setSessions] = useState<StoredSession[]>([]);
   const [currentId, setCurrentId] = useState<string>('');
+  const [ragScopeSessionId, setRagScopeSessionId] = useState<string | null>(null);
+  const [ragDocuments, setRagDocuments] = useState<RagDocumentStatus[]>([]);
+  const [deletedSession, setDeletedSession] = useState<{ session: StoredSession; index: number } | null>(null);
   const [kbNotice, setKbNotice] = useState<string | null>(null);
 
   const loopbackRef = useRef<LoopbackCapture | null>(null);
@@ -97,6 +106,7 @@ export function App() {
   const currentIdRef = useRef<string>('');
   const answerLangRef = useRef<AnswerLang>('chinese');
   const loaded = useRef(false);
+  const ragScopeRequest = useRef(0);
 
   // UI language: settings-driven; ref mirror so stable callbacks stay fresh
   const t = getDict(settings?.ui.lang);
@@ -199,7 +209,7 @@ export function App() {
       // line — so the turn label (and thus session history) carries the real
       // question instead of a constant '对方最新发言' (v1 history-label bug)
       let question = text;
-      if (mode === 'continuous') {
+      if (mode === 'continuous' && !question) {
         for (let i = segs.length - 1; i >= 0; i--) {
           if ((segs[i].speaker ?? 'them') === 'them') {
             question = segs[i].text;
@@ -220,6 +230,7 @@ export function App() {
         answerLang: answerLangRef.current,
         history: mode === 'translate' ? undefined : buildHistory(),
         ...material,
+        ragScope: mode === 'translate' ? undefined : sessionsRef.current.find((s) => s.id === sid)?.ragScope,
       };
       window.mc.llmAsk(payload);
     },
@@ -227,9 +238,9 @@ export function App() {
   );
 
   const askShot = useCallback(
-    (question: string, imageDataUrl?: string) => {
-      const sid = currentIdRef.current;
-      if (!sid) return;
+    (question: string, imageDataUrl?: string, sid = currentIdRef.current) => {
+      const session = sessionsRef.current.find((s) => s.id === sid);
+      if (!session) return;
       const requestId = uid('shot');
       appendTurn(sid, {
         id: requestId,
@@ -239,25 +250,31 @@ export function App() {
         status: 'streaming',
       });
       maybeTitle(sid, question || tRef.current.app.shotQuestion);
-      const m = currentMaterial();
-      const background = [m.resume, m.jd].filter(Boolean).join('\n\n') || undefined;
-      window.mc.shotAsk({ requestId, question, background, imageDataUrl });
+      const background = [session.resumeText, session.jdText].filter(Boolean).join('\n\n') || undefined;
+      window.mc.shotAsk({ requestId, question, background, imageDataUrl, ragScope: sessionsRef.current.find((s) => s.id === sid)?.ragScope });
     },
     [appendTurn, currentMaterial, maybeTitle],
   );
 
   /** region screenshot flow (📷 button or hotkey): drag a region, then ask */
   const doRegionShot = useCallback(async () => {
-    const img = await window.mc.pickRegion();
-    if (img) askShot('', img);
+    const sid = currentIdRef.current;
+    try {
+      const img = await window.mc.pickRegion();
+      if (img) askShot('', img, sid);
+    } catch {
+      setKbNotice(tRef.current.answer.shotFail);
+    }
   }, [askShot]);
 
   // ---- boot: load settings + sessions ----
   useEffect(() => {
     void window.mc.getSettings().then((s) => {
       setSettings(s);
+      setProtectionUnknown(typeof s.contentProtection?.actual !== 'boolean');
+      setProtectionError(s.contentProtection?.ok !== true);
       answerLangRef.current = s.llm.answerLang;
-    });
+    }).catch(() => { setProtectionUnknown(true); setProtectionError(true); });
     void window.mc.loadSessions().then((f) => {
       if (f.sessions.length) {
         // heal legacy duplicate segment ids (worker counter used to reset per
@@ -280,13 +297,8 @@ export function App() {
     });
 
     const handleAsrEvent = (ev: AsrEvent) => {
-      if (ev.kind === 'ready') {
-        setAsr((s) => ({ ...s, phase: 'ready', ep: ev.ep, gpuSuspect: ev.gpuSuspect, workerState: 'listening' }));
-      } else if (ev.kind === 'status') {
-        setAsr((s) => ({ ...s, workerState: ev.state }));
-      } else if (ev.kind === 'error') {
-        setAsr((s) => ({ ...s, phase: ev.fatal ? 'error' : s.phase, lastError: ev.message }));
-      } else if (ev.kind === 'partial') {
+      setAsr((s) => updateAsrUiState(s, ev));
+      if (ev.kind === 'partial') {
         setPartials((p) => ({ ...p, [ev.speaker]: ev.text }));
       } else if (ev.kind === 'segment') {
         setPartials((p) => ({ ...p, [ev.speaker]: undefined })); // final replaces the live partial
@@ -340,7 +352,7 @@ export function App() {
           turns: s.turns.map((t) => {
             if (t.id !== ev.requestId) return t;
             if (ev.kind === 'delta') return { ...t, text: t.text + ev.text };
-            if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done' };
+            if (ev.kind === 'done') return { ...t, text: ev.text || t.text, status: 'done', sources: ev.sources };
             return { ...t, status: 'error', error: ev.message };
           }),
         })),
@@ -378,11 +390,12 @@ export function App() {
     return () => clearTimeout(t);
   }, [sessions, currentId]);
 
-  // ---- apply UI theme + answer font scale to the document root ----
+  // ---- apply UI theme + answer font scale + panel opacity to the document root ----
   useEffect(() => {
     const ui = settings?.ui;
     if (!ui) return;
     document.documentElement.dataset.fontScale = ui.fontScale ?? 'medium';
+    applyPanelOpacity(ui.opacity);
     const apply = () => {
       const mode = ui.theme ?? 'dark';
       const dark =
@@ -440,9 +453,10 @@ export function App() {
       }
       window.mc.captureStarted();
       setCapturing(true);
+      setAsr((s) => clearError(s, 'capture'));
       prewarm(true); // ▶ = the meeting starts — build the KV prefix cache now
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: tRef.current.app.captureStartFail((e as Error).message) }));
+      setAsr((s) => setError(s, 'capture', tRef.current.app.captureStartFail((e as Error).message)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -468,15 +482,15 @@ export function App() {
     try {
       await mic.start(settings?.audio.micDeviceId, (buf, ts) => window.mc.sendPcm(buf, ts, 'me'));
       setMicActive(true);
-      if (mics.length === 0) void listMics().then(setMics);
+      setAsr((s) => clearError(s, 'mic'));
+      if (mics.length === 0) void listMics().then(setMics).catch(() => undefined);
     } catch (e) {
-      setAsr((s) => ({ ...s, lastError: tRef.current.app.micStartFail((e as Error).message) }));
+      setAsr((s) => setError(s, 'mic', tRef.current.app.micStartFail((e as Error).message)));
     }
   }, [settings, mics]);
 
   const setSeg = useCallback(
-    (segId: number, patch: Partial<TranscriptSegment>) => {
-      const sid = currentIdRef.current;
+    (sid: string, segId: number, patch: Partial<TranscriptSegment>) => {
       setSessions((list) =>
         list.map((s) =>
           s.id === sid
@@ -491,20 +505,30 @@ export function App() {
   const translateSegment = useCallback(
     (seg: TranscriptSegment) => {
       if (seg.translating) return; // re-translating an already-translated bubble is allowed
-      setSeg(seg.id, { translating: true });
+      const sid = currentIdRef.current;
+      setSeg(sid, seg.id, { translating: true });
       window.mc
         .translate(seg.text)
-        .then((zh) => setSeg(seg.id, { translation: zh, translating: false }))
-        .catch(() => setSeg(seg.id, { translation: tRef.current.app.translateFail, translating: false }));
+        .then((zh) => setSeg(sid, seg.id, { translation: zh, translating: false }))
+        .catch(() => setSeg(sid, seg.id, { translation: tRef.current.app.translateFail, translating: false }));
     },
     [setSeg],
   );
 
   const toggleStealth = useCallback(async () => {
-    if (!settings) return;
-    const on = await window.mc.setStealth(!settings.ui.stealth);
-    setSettings({ ...settings, ui: { ...settings.ui, stealth: on } });
-  }, [settings]);
+    if (!settings || protectionBusy) return;
+    setProtectionBusy(true);
+    try {
+      const result = await window.mc.setStealth(!settings.ui.stealth);
+      setSettings(result);
+      setProtectionUnknown(typeof result.contentProtection?.actual !== 'boolean');
+      setProtectionError(result.contentProtection?.ok !== true);
+      setProtectionSaveError(false);
+    } catch {
+      // Saving a future preference does not change current runtime protection.
+      setProtectionSaveError(true);
+    } finally { setProtectionBusy(false); }
+  }, [settings, protectionBusy]);
 
   const toggleAnswerLang = useCallback(async () => {
     if (!settings) return;
@@ -532,7 +556,11 @@ export function App() {
         await mic.stop();
         await mic
           .start(deviceId || undefined, (buf, ts) => window.mc.sendPcm(buf, ts, 'me'))
-          .catch(() => setMicActive(false));
+          .then(() => { setMicActive(true); setAsr((s) => clearError(s, 'mic')); })
+          .catch((e) => {
+            setMicActive(false);
+            setAsr((s) => setError(s, 'mic', tRef.current.app.micStartFail((e as Error).message)));
+          });
       }
     },
     [],
@@ -551,10 +579,11 @@ export function App() {
           (buf, ts) => window.mc.sendPcm(buf, ts, 'them'),
           { audioProcessing: false },
         )
+        .then(() => setAsr((s) => clearError(s, 'capture')))
         .catch((e) => {
           window.mc.captureStopped();
           setCapturing(false);
-          setAsr((s) => ({ ...s, lastError: tRef.current.app.themInputSwitchFail((e as Error).message) }));
+          setAsr((s) => setError(s, 'capture', tRef.current.app.themInputSwitchFail((e as Error).message)));
         });
     }
   }, []);
@@ -581,6 +610,13 @@ export function App() {
   }, []);
 
   const deleteSession = useCallback((id: string) => {
+    const index = sessionsRef.current.findIndex((s) => s.id === id);
+    if (index < 0) return;
+    const session = sessionsRef.current[index];
+    for (const turn of session.turns) {
+      if (turn.status === 'streaming') window.mc.llmCancel(turn.id);
+    }
+    setDeletedSession({ session: { ...session, turns: session.turns.map((t) => t.status === 'streaming' ? { ...t, status: 'done' } : t) }, index });
     setSessions((list) => {
       const next = list.filter((s) => s.id !== id);
       if (next.length === 0) {
@@ -592,6 +628,13 @@ export function App() {
       return next;
     });
   }, []);
+
+  const undoDeleteSession = useCallback(() => {
+    if (!deletedSession) return;
+    setSessions((list) => restoreSession(list, deletedSession.session, deletedSession.index));
+    setCurrentId(deletedSession.session.id);
+    setDeletedSession(null);
+  }, [deletedSession]);
 
   const renameSession = useCallback(
     (id: string, name: string) => {
@@ -643,6 +686,7 @@ export function App() {
 
   const pickKb = useCallback(
     async (slot: KbSlot) => {
+      const sid = currentIdRef.current;
       const r = await window.mc.pickKnowledge(slot);
       if (!r) return;
       if (!r.text.trim()) {
@@ -651,11 +695,12 @@ export function App() {
         return;
       }
       setKbNotice(null);
-      patchSession(currentIdRef.current, (s) =>
+      patchSession(sid, (s) =>
         slot === 'resume'
           ? { ...s, resumeName: r.name, resumeText: r.text }
           : { ...s, jdName: r.name, jdText: r.text },
       );
+      if (sid !== currentIdRef.current) return;
       // material changed → reheat the prefix cache with the fresh bytes;
       // patchSession is async (React state), so pass the new slots directly
       window.mc.prewarm({
@@ -717,6 +762,7 @@ export function App() {
 
   return (
     <I18nProvider lang={settings?.ui.lang}>
+      <SurfaceHints />
     <div className="app">
       <header className="titlebar">
         <span className="brand">MeetingCopilot</span>
@@ -725,15 +771,13 @@ export function App() {
             className={capturing ? 'btn btn-live' : 'btn btn-primary'}
             onClick={() => (capturing ? void stopCapture() : void startCapture())}
             disabled={asr.phase !== 'ready'}
-            title={
-              captureKindForPlatform(window.mc.platform) === 'loopback'
+            {...hintProps(captureKindForPlatform(window.mc.platform) === 'loopback'
                 ? capturing
                   ? t.titlebar.stopTitle
                   : t.titlebar.startTitle
                 : capturing
                   ? t.titlebar.stopInputTitle
-                  : t.titlebar.startInputTitle
-            }
+                  : t.titlebar.startInputTitle)}
           >
             {capturing ? t.titlebar.stop : t.titlebar.start}
           </button>
@@ -742,7 +786,7 @@ export function App() {
               className="mic-select"
               value={settings?.audio.themDeviceId ?? ''}
               onChange={(e) => void selectThemInput(e.target.value)}
-              title={t.titlebar.themDeviceTitle}
+              {...hintProps(t.titlebar.themDeviceTitle)} aria-label={t.titlebar.themDeviceTitle}
             >
               <option value="">{t.titlebar.themDeviceDefault}</option>
               {mics.map((m) => (
@@ -755,24 +799,24 @@ export function App() {
           <button
             className={continuous ? 'btn btn-on' : 'btn'}
             onClick={() => setContinuous((v) => !v)}
-            title={t.titlebar.continuousTitle}
+            {...hintProps(t.titlebar.continuousTitle)} aria-pressed={continuous}
           >
             {t.titlebar.continuous}
           </button>
           <button
             className={settings?.llm.answerWithVision ? 'btn btn-on' : 'btn'}
             onClick={() => void toggleAnswerModel()}
-            title={t.titlebar.modelTitle}
+            {...hintProps(t.titlebar.modelTitle)} aria-pressed={!!settings?.llm.answerWithVision}
           >
             {settings?.llm.answerWithVision ? t.titlebar.vision : t.titlebar.textOnly}
           </button>
-          <button className="btn" onClick={() => void toggleAnswerLang()} title={t.titlebar.answerLangTitle}>
+          <button className="btn" onClick={() => void toggleAnswerLang()} {...hintProps(t.titlebar.answerLangTitle)}>
             {t.titlebar.answerLang(settings?.llm.answerLang === 'english')}
           </button>
           <button
             className={micActive ? 'btn btn-live' : 'btn'}
             onClick={() => void toggleMicCapture()}
-            title={t.titlebar.micTitle}
+            {...hintProps(t.titlebar.micTitle)} aria-pressed={micActive}
           >
             {micActive ? t.titlebar.micOn : t.titlebar.micOff}
           </button>
@@ -781,7 +825,7 @@ export function App() {
               className="mic-select"
               value={settings?.audio.micDeviceId ?? ''}
               onChange={(e) => void selectMic(e.target.value)}
-              title={t.titlebar.micDeviceTitle}
+              {...hintProps(t.titlebar.micDeviceTitle)} aria-label={t.titlebar.micDeviceTitle}
             >
               <option value="">{t.titlebar.micDefault}</option>
               {mics.map((m) => (
@@ -791,31 +835,25 @@ export function App() {
               ))}
             </select>
           )}
-          <button
-            className={settings?.ui.stealth ? 'btn btn-on' : 'btn'}
-            onClick={() => void toggleStealth()}
-            title={
-              window.mc.platform === 'darwin'
-                ? t.titlebar.stealthMacTitle
-                : t.titlebar.stealthTitle
-            }
-          >
-            {t.titlebar.stealth(!!settings?.ui.stealth)}
-          </button>
-          <button className="btn" onClick={() => setShowHud((v) => !v)} title={t.titlebar.hudTitle}>
+          <ProtectionPreference actual={protectionUnknown ? null : settings?.contentProtection?.actual ?? null}
+            nextLaunch={settings?.ui.stealth ?? true} busy={!settings || protectionBusy} onToggle={() => void toggleStealth()} />
+          <button className="btn" onClick={() => setShowHud((v) => !v)} {...hintProps(t.titlebar.hudTitle)} aria-pressed={showHud}>
             HUD
           </button>
-          <button className="btn" onClick={() => setShowSettings((v) => !v)} title={t.titlebar.settingsTitle}>
+          <button className="btn" onClick={() => setShowSettings((v) => !v)} {...hintProps(t.titlebar.settingsTitle)} aria-label={t.titlebar.settingsTitle}>
             ⚙
           </button>
-          <button className="btn" onClick={() => window.mc.hide()} title={t.titlebar.hideTitle}>
+          <button className="btn" onClick={() => window.mc.hide()} {...hintProps(t.titlebar.hideTitle)} aria-label={t.titlebar.hideTitle}>
             —
           </button>
-          <button className="btn btn-close" onClick={() => window.mc.quit()} title={t.titlebar.quitTitle}>
+          <button className="btn btn-close" onClick={() => window.mc.quit()} {...hintProps(t.titlebar.quitTitle)} aria-label={t.titlebar.quitTitle}>
             ✕
           </button>
         </div>
       </header>
+      <div className="upgrade-banner protection-update" role="status">{t.titlebar.protectionUpdate}</div>
+      {protectionSaveError && <div className="upgrade-banner" role="alert">{t.titlebar.protectionSaveFailed}</div>}
+      {protectionError && <div className="upgrade-banner" role="alert">{t.titlebar.protectionFailed}</div>}
 
       {/* grandfathered users (settings.json predates the wizard) get one
           dismissible pointer at the new wizard; wizard-created profiles never
@@ -867,6 +905,7 @@ export function App() {
 
       {showSettings && settings && (
         <SettingsPanel
+          onSettingsChanged={setSettings}
           settings={settings}
           onSaved={(s) => {
             setSettings(s);
@@ -889,8 +928,20 @@ export function App() {
         />
       )}
 
+      {ragScopeSessionId && <KnowledgeScopeDialog
+        key={ragScopeSessionId}
+        scope={sessions.find((session) => session.id === ragScopeSessionId)?.ragScope ?? { enabled: false }}
+        documents={ragDocuments}
+        onSave={(ragScope: RagScope) => {
+          patchSession(ragScopeSessionId, (session) => ({ ...session, ragScope }));
+          setRagScopeSessionId(null);
+        }}
+        onClose={() => setRagScopeSessionId(null)}
+      />}
+
       <div className="panes">
         <TranscriptPanel
+          key={currentId}
           segments={segments}
           partials={partials}
           answersReady={answersReady}
@@ -914,10 +965,21 @@ export function App() {
           onSwitch={setCurrentId}
           onNew={createSession}
           onDelete={deleteSession}
+          onUndoDelete={deletedSession ? undoDeleteSession : undefined}
+          onOpenRagScope={settings?.rag.enabled ? () => {
+            const sid = currentIdRef.current;
+            const request = ++ragScopeRequest.current;
+            void window.mc.getRagDocuments().then((documents) => {
+              if (request !== ragScopeRequest.current || currentIdRef.current !== sid || !sessionsRef.current.some((s) => s.id === sid)) return;
+              setRagDocuments(documents);
+              setRagScopeSessionId(sid);
+            }).catch(() => setKbNotice('Knowledge library unavailable / 资料库暂不可用'));
+          } : undefined}
           onRename={renameSession}
           onPickKb={(slot) => void pickKb(slot)}
           onClearKb={clearKb}
           onCancel={cancelTurn}
+          onRetry={(turn) => { if (turn.kind !== 'vision') askLlm(turn.kind, turn.label); }}
           onClear={() => patchSession(currentIdRef.current, (s) => ({ ...s, turns: [] }))}
           onFreeAsk={(q) => askLlm('free', q)}
           onShotAsk={askShot}
@@ -925,6 +987,7 @@ export function App() {
       </div>
 
       <StatusBar
+        backend={settings?.asr.backend}
         asr={asr}
         capturing={capturing}
         hud={showHud ? hud : undefined}

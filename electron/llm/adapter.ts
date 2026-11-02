@@ -1,3 +1,5 @@
+import { deepseekThinking } from '../../shared/deepseek';
+import { LlmRequestError, requestLifetime } from './request';
 /**
  * SDD contract: OpenAI-compatible chat adapter (PLAN §7.1).
  * DeepSeek / GPT / Qwen / Gemini-openai all satisfy this one interface.
@@ -8,6 +10,10 @@ export interface LlmConfig {
   baseUrl: string; // e.g. https://api.deepseek.com/v1
   model: string;
   apiKey: string;
+  /** Explicit provider override; absent keeps relay request bodies unchanged. */
+  thinking?: boolean;
+  /** Whole-request deadline, including body consumption. */
+  timeoutMs?: number;
 }
 
 export type ChatContentPart =
@@ -63,17 +69,25 @@ export class SseParser {
 export function extractDelta(payload: string): string {
   try {
     const j = JSON.parse(payload);
-    return j?.choices?.[0]?.delta?.content ?? j?.choices?.[0]?.message?.content ?? '';
+    const content = j?.choices?.[0]?.delta?.content ?? j?.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content : '';
   } catch {
     return '';
   }
+}
+
+/** Never infer a provider extension from a model name on third-party relays. */
+export function thinkingBody(config: LlmConfig): Record<string, unknown> {
+  const thinking = config.thinking ?? deepseekThinking(config.baseUrl, config.model);
+  return thinking === undefined ? {} : { thinking: { type: thinking ? 'enabled' : 'disabled' } };
 }
 
 /** Extract the full message content from a non-streamed OpenAI-compatible reply. */
 export function extractMessageText(jsonBody: string): string {
   try {
     const j = JSON.parse(jsonBody);
-    return j?.choices?.[0]?.message?.content ?? '';
+    const content = j?.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content : '';
   } catch {
     return '';
   }
@@ -107,31 +121,44 @@ export async function chatOnce(
   messages: ChatMessage[],
   opts?: { maxTokens?: number; temperature?: number; signal?: AbortSignal },
 ): Promise<{ text: string; usage?: ChatUsage }> {
-  const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      stream: false,
-      temperature: opts?.temperature ?? 0.5,
-      ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-    }),
-    signal: opts?.signal,
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
-  }
-  const j = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-    usage?: ChatUsage;
-  };
-  return { text: j?.choices?.[0]?.message?.content ?? '', usage: j?.usage };
+  const lifetime = requestLifetime(opts?.signal, config.timeoutMs);
+  try {
+    lifetime.signal.throwIfAborted();
+    const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        ...thinkingBody(config),
+        messages,
+        stream: false,
+        temperature: opts?.temperature ?? 0.5,
+        ...(opts?.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      }),
+      signal: lifetime.signal,
+    });
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      throw new LlmRequestError('HTTP_ERROR', `LLM HTTP ${res.status}`, res.status);
+    }
+    const j = (await res.json().catch(() => {
+      throw new LlmRequestError('INVALID_RESPONSE', 'LLM returned invalid JSON');
+    })) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: ChatUsage;
+    };
+    const text = j?.choices?.[0]?.message?.content;
+    // One-token connection probes/prewarms may legitimately exhaust output in reasoning.
+    if (typeof text !== 'string' || (!text.trim() && opts?.maxTokens !== 1)) throw new LlmRequestError('INVALID_RESPONSE', 'LLM returned no answer text');
+    return { text, usage: j?.usage };
+  } catch (error) {
+    if (lifetime.signal.aborted) throw lifetime.signal.reason;
+    throw error;
+  } finally { lifetime.dispose(); }
 }
 
 /**
@@ -144,48 +171,68 @@ export async function chatStream(
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
 ): Promise<ChatResult> {
-  const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      stream: true,
-      temperature: 0.5,
-    }),
-    signal,
-  });
+  const lifetime = requestLifetime(signal, config.timeoutMs);
+  try {
+    lifetime.signal.throwIfAborted();
+    const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        ...thinkingBody(config),
+        messages,
+        stream: true,
+        temperature: 0.5,
+      }),
+      signal: lifetime.signal,
+    });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
-  }
-  if (!res.body) throw new Error('LLM response has no body');
-
-  const parser = new SseParser();
-  const decoder = new TextDecoder();
-  let full = '';
-  let usage: ChatUsage | undefined;
-  const reader = res.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
-      const delta = extractDelta(payload);
-      if (delta) {
-        full += delta;
-        callbacks.onDelta(delta);
-      }
-      const u = extractUsage(payload);
-      if (u) usage = u;
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      throw new LlmRequestError('HTTP_ERROR', `LLM HTTP ${res.status}`, res.status);
     }
-    if (parser.done) break;
-  }
-  return { text: full, usage };
+    if (!res.body) throw new LlmRequestError('INVALID_RESPONSE', 'LLM response has no body');
+
+    const parser = new SseParser();
+    const decoder = new TextDecoder();
+    let full = '';
+    let usage: ChatUsage | undefined;
+    const reader = res.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
+          let event: unknown;
+          try { event = JSON.parse(payload); }
+          catch { throw new LlmRequestError('INVALID_RESPONSE', 'LLM stream contained invalid JSON'); }
+          if (event && typeof event === 'object' && 'error' in event) {
+            throw new LlmRequestError('INVALID_RESPONSE', 'LLM provider reported a streaming error');
+          }
+          const delta = extractDelta(payload);
+          if (delta) {
+            full += delta;
+            callbacks.onDelta(delta);
+          }
+          const u = extractUsage(payload);
+          if (u) usage = u;
+        }
+        if (parser.done) break;
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+    if (!full.trim()) throw new LlmRequestError('INVALID_RESPONSE', 'LLM returned no answer text');
+    return { text: full, usage };
+  } catch (error) {
+    if (lifetime.signal.aborted) throw lifetime.signal.reason;
+    throw error;
+  } finally { lifetime.dispose(); }
 }
 
 /** Pull the usage object from an SSE payload if present (DeepSeek final chunk). */

@@ -17,6 +17,21 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 </div>
 
+## 0.2.0-beta.2 — release preparation
+
+- **Added:** optional multi-document RAG with per-session document scope (OFF by default), session-deletion undo and TXT export.
+- **Improved:** neutral light/dark glass UI, panel-only transparency with readable text, directly visible Translate/Answer controls and in-window hover hints.
+- **Fixed:** stale selection popups on session changes/clearing, popup clipping at window edges, recovered ASR warnings, audio start/stop cleanup, cross-session async results and provider compatibility. RAG integration includes index integrity, per-file error isolation, scope-before-ranking, worker recovery and real outside-root symlink regression coverage.
+- **Changed:** capture-protection preferences apply on the next launch; current state is shown separately. New/missing preferences default to ON; explicit OFF choices are preserved.
+
+Installers for this update are being prepared; this section does not claim publication. See the [bilingual changelog](CHANGELOG.md) for changes, contribution attribution and limitations, and [UI details](docs/user/UI_UPDATE.md).
+
+## Update notice: protection changes apply on next launch
+
+Capture protection defaults to **ON for new profiles or a missing preference**; an existing explicit OFF choice is preserved. The toolbar separates **current runtime state** from **next-launch preference**. Changing the preference only saves it: it does not change protection now, restart the app, or rebuild the window. After saving, finish your current work, choose **Quit** (not Hide/minimize to tray), then reopen the app to apply it. Until then, the current state is unchanged.
+
+Protection is best-effort, not guaranteed invisibility. Confirm the current state and test your actual sharing/recording app with harmless content before sharing sensitive notes. See [update details and verification limits](docs/user/FEEDBACK_FIXES.md).
+
 ## Download
 
 **Just want to use it?** Download the installer — no Node.js, no Python, no commands.
@@ -80,11 +95,11 @@ You can reopen the wizard any time from *⚙ Settings → Run the setup wizard a
 - 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle (`A:EN`) and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
 - 🌐 **Fully English or Chinese interface** — every label, tooltip, dialog and status message is available in both languages. Switch under *Settings → Appearance → UI Language*; first launch follows your OS language automatically. UI language and answer language are independent, so you can run an English UI while reading Chinese answers, or vice versa.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
-- 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing is local and deterministic, nothing gets uploaded. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
+- 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing happens locally; material included in an answer request is sent to your configured model provider. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
 - 🚀 **Prefix-cache prewarm** — pressing ▶ fires a 1-token request that pre-builds the LLM provider's KV prefix cache, so the first real answer prefills from cache (verified via DeepSeek `prompt_cache_hit_tokens`); kept warm automatically during capture.
-- 🖼️ **Region-screenshot Q&A** — drag-select any screen region (the selection overlay itself is invisible to recording) and ask a vision model (MiMo / Gemini) about it.
-- 🥷 **Capture protection** — content protection plus a global hide/show hotkey. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
+- 🖼️ **Region-screenshot Q&A** — drag-select a screen region and ask your configured vision model about it. Capture protection is best-effort: a known one-frame/taskbar exposure around region selection remains a limitation; test the actual recording route before use.
+- 🥷 **Capture protection** — next-launch content-protection preference plus a global hide/show hotkey; the preference does not toggle protection during the current run. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
 - 🩺 **Connection tests, service status and local diagnostics** — one click tells you whether a key, the network or the account is at fault (14 normalized error codes), and the diagnostics report is built locally with no keys, transcripts or resume text in it.
 - 🔔 **System tray** — show/hide, start/stop transcription, new session, settings, service status, help and quit, all without a taskbar button. Optional start-at-login, off by default.
 - 🌗 **Dark / light / follow-system themes**, 3-step answer font size, latency HUD, inline translation, multi-session with fully isolated transcript + chat + material per meeting.

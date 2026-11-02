@@ -1,6 +1,6 @@
 {
   "name": "meeting-copilot",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0-beta.2",
   "description": "Real-time meeting/interview copilot for Windows and macOS: streaming ASR (local FunASR / cloud) and first-person answers via BYOK LLM",
   "main": "./out/main/index.js",
   "author": "JWM0203",
@@ -28,6 +28,7 @@
     "smoke:asr:realtime": "node tools/rt-asr-smoke.mjs",
     "smoke:e2e:llm": "node tools/e2e-llm.mjs",
     "smoke:e2e:local": "node tools/e2e-local-lifecycle.mjs",
+    "smoke:ui": "node tools/electron-ui-smoke.mjs",
     "smoke:packaged": "node tools/packaged-smoke.mjs"
   },
   "dependencies": {
@@ -46,6 +47,7 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "patch-package": "^8.0.0",
+    "playwright": "1.56.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "typescript": "~5.8.2",

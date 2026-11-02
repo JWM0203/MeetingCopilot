@@ -1,3 +1,6 @@
+import { saveProtectionPreference } from './protectionPreference';
+import { shouldNotifyWindowHidden } from '../shared/windowNoticePolicy';
+import { applyContentProtection, readContentProtection } from './contentProtection';
 /**
  * MeetingCopilot main process: overlay window, stealth, hotkeys,
  * settings, IPC hub, ASR worker host. PLAN.en.md §5.
@@ -15,14 +18,19 @@ import {
   session,
   shell,
 } from 'electron';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { release } from 'os';
-import { join } from 'path';
+import { createRequire } from 'module';
+import { writeSmokeEvidence } from './smokeEvidence';
+import { basename, join, resolve } from 'path';
 import {
   captureKindForPlatform,
   whisperExecutionProvidersForPlatform,
 } from '../shared/platform';
 import { AsrHost } from './asrHost';
+import { RagHost } from './ragHost';
+import type { RagStatus } from '../shared/rag';
+import { retrieveForAnswer } from './ragAnswer';
 import {
   LocalPythonProbe,
   buildDiagnosticsReport,
@@ -40,7 +48,6 @@ import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shar
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
 import { DOC_EXTENSIONS, extractDocText } from './docparse';
-import { basename } from 'path';
 import { chatOnce, chatStream, type ChatResult } from './llm/adapter';
 import { visionChat } from './llm/vision';
 import {
@@ -62,6 +69,7 @@ import {
   type OnboardingProgressPatch,
   type ProviderTestRequest,
   type ProviderTestResult,
+  type RagScope,
   type SettingsPatch,
 } from '../shared/protocol';
 import { mainStrings } from './uiStrings';
@@ -110,6 +118,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function bootstrap(): void {
   let win: BrowserWindow | null = null;
+  let protectionStatus: import('../shared/protocol').ContentProtectionResult = { ok: false, requested: false, actual: null, code: 'unavailable' };
   /** first-run wizard window; mutually exclusive with `win` until completion */
   let setupWin: BrowserWindow | null = null;
   /** the wizard was reopened from a running main window (设置 → 重新运行配置
@@ -126,6 +135,7 @@ function bootstrap(): void {
   /** renderer capture lifecycle; the tray menu and the diagnostics report read it */
   let capturing = false;
   const asr = new AsrHost();
+  const rag = new RagHost();
   const sidecar = new FunasrSidecar();
   const tray = new AppTray();
 
@@ -136,8 +146,90 @@ function bootstrap(): void {
   function publicSettings(): PublicSettings {
     const pub = settings.getPublic();
     pub.knowledge = { chars: knowledge.chars };
+    // Settings are not runtime proof: expose the existing main window's actual state.
+    pub.contentProtection = readContentProtection(win, protectionStatus);
     return pub;
   }
+
+  const ragStartOptions = (rootPath: string) => ({
+    indexDir: join(app.getPath('userData'), 'knowledge-v1'),
+    modelDir: join(app.getPath('userData'), 'models', 'rag'),
+    rootPath,
+  });
+
+  let ragEpoch = 0;
+  let ragActiveEpoch = -1;
+  let ragActiveRoot: string | undefined;
+  let ragLifecycle: Promise<unknown> = Promise.resolve();
+  let ragStopping: Promise<void> = Promise.resolve();
+  const llmControllers = new Map<string, AbortController>();
+
+  // One queue owns startup, settings changes, manual scans and rebuilds. Failed
+  // work must not poison later Retry operations. Invalidation is synchronous:
+  // stop() rejects old worker requests before the queue can start the new root.
+  function enqueueRag<T>(epoch: number, work: () => Promise<T>): Promise<T> {
+    const operation = ragLifecycle.catch(() => undefined).then(async () => {
+      await ragStopping;
+      if (quitting || epoch !== ragEpoch) throw new Error('Knowledge base configuration changed');
+      return work();
+    });
+    ragLifecycle = operation.catch(() => undefined);
+    return operation;
+  }
+
+  function visibleRagStatus(): RagStatus {
+    if (ragActiveEpoch === ragEpoch) return rag.currentStatus;
+    const enabled = !!settings?.data.rag.enabled && !!settings?.data.rag.rootPath;
+    return { phase: enabled ? 'loading' : 'disabled', enabled, fileCount: 0, chunkCount: 0, failedCount: 0 };
+  }
+
+  function invalidateRag(): void {
+    ragEpoch += 1;
+    ragActiveEpoch = -1;
+    ragActiveRoot = undefined;
+    const stopping = rag.stop();
+    ragStopping = Promise.all([ragStopping, stopping]).then(() => undefined);
+    for (const [requestId, controller] of llmControllers) {
+      controller.abort();
+      rag.cancel(requestId);
+      win?.webContents.send(IPC.llmEvent, {
+        requestId, kind: 'error', message: T().ragChanged,
+      });
+    }
+    llmControllers.clear();
+    win?.webContents.send(IPC.ragStatus, visibleRagStatus());
+  }
+
+  async function ensureRagStarted(epoch: number): Promise<void> {
+    const config = { ...settings.data.rag };
+    if (!config.enabled || !config.rootPath) throw new Error('Local knowledge base is disabled or not configured');
+    if (rag.isRunning && ragActiveRoot !== config.rootPath) await rag.stop();
+    if (epoch !== ragEpoch || quitting) throw new Error('Knowledge base configuration changed');
+    ragActiveEpoch = epoch;
+    ragActiveRoot = config.rootPath;
+    if (!rag.isRunning) await rag.start(ragStartOptions(config.rootPath));
+  }
+
+  function queueRagLifecycle(): void {
+    const epoch = ragEpoch;
+    void enqueueRag(epoch, async () => {
+      if (!settings.data.rag.enabled || !settings.data.rag.rootPath) return;
+      await ensureRagStarted(epoch);
+    }).catch((error: Error) => {
+      if (epoch === ragEpoch && !quitting) console.error(`[rag] lifecycle failed: ${error.name || 'Error'}`);
+    });
+  }
+
+  function validatedRagRoot(value: string): string {
+    if (typeof value !== 'string' || !value.trim()) throw new Error('Knowledge base root is empty');
+    const rootPath = resolve(value);
+    if (!statSync(rootPath).isDirectory()) throw new Error('Knowledge base root is not a directory');
+    return rootPath;
+  }
+
+  rag.onStatus((status) => {
+    if (ragActiveEpoch === ragEpoch) win?.webContents.send(IPC.ragStatus, status);
+  });
 
   function buildAsrOptions() {
     const a = settings.data.asr;
@@ -278,7 +370,11 @@ function bootstrap(): void {
 
   /** one-shot balloon the first time the window disappears (spec §A) */
   function noticeWindowHidden(): void {
-    if (!tray.exists || settings.data.ui.trayNoticeShown) return;
+    const protection = readContentProtection(win, protectionStatus);
+    if (!shouldNotifyWindowHidden({
+      trayExists: tray.exists, alreadyShown: !!settings.data.ui.trayNoticeShown,
+      actualProtection: protection.actual, protectionRequested: protection.requested,
+    })) return;
     settings.applyPatch({ ui: { trayNoticeShown: true } });
     const t = T();
     tray.notifyHidden(t.trayNoticeTitle, t.trayNoticeBody);
@@ -354,7 +450,7 @@ function bootstrap(): void {
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');
-    win.setContentProtection(settings.data.ui.stealth);
+    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, () => { /* keep next-launch preference independent of actual startup state */ });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
 
@@ -376,8 +472,14 @@ function bootstrap(): void {
         const js = `(async()=>{const d=[];const done=new Promise(r=>{const off=window.mc.onLlmEvent(e=>{if(e.kind==='delta')d.push(e.text);else if(e.kind==='done'){off();r({ok:true,text:e.text||d.join('')});}else if(e.kind==='error'){off();r({ok:false,error:e.message});}});});window.mc.llmAsk({requestId:'e2e-llm',mode:'free',freeQuestion:${JSON.stringify(q)},recentTranscript:[]});return await done;})()`;
         void win?.webContents
           .executeJavaScript(js, true)
-          .then((r) => console.log('[e2e-llm]', JSON.stringify(r)))
-          .catch((e) => console.log('[e2e-llm] threw', (e as Error).message));
+          .then((r) => {
+            writeSmokeEvidence('llm-ipc', { ok: r.ok, error: r.error });
+            console.log('[e2e-llm]', JSON.stringify(r));
+          })
+          .catch((e) => {
+            writeSmokeEvidence('fatal', { stage: 'llm-ipc' });
+            console.log('[e2e-llm] threw', (e as Error).message);
+          });
       }
       // Visual QA of the main window (same spirit as MC_SETUP_SHOT for the
       // wizard): open the settings panel, let it paint, capture a PNG.
@@ -400,12 +502,22 @@ function bootstrap(): void {
             );
             await wait(1200);
             await shoot('main-settings-common');
+            await win?.webContents.executeJavaScript(
+              `(()=>{const el=document.querySelector('.rag-settings');el?.scrollIntoView({block:'start'});return !!el;})()`,
+            );
+            await wait(300);
+            await shoot('main-settings-rag');
             // expand 高级 and scroll to it, so the collapsed half is reviewable too
             await win?.webContents.executeJavaScript(
               `(()=>{const p=document.querySelector('.settings');if(!p)return 0;p.querySelectorAll('details').forEach(d=>d.open=true);p.scrollTop=p.scrollHeight;return p.scrollHeight;})()`,
             );
             await wait(600);
             await shoot('main-settings-advanced');
+            await win?.webContents.executeJavaScript(
+              `(()=>{const settings=document.querySelector('.settings');const cancel=settings?.querySelector('.settings-actions .btn:last-child');if(cancel instanceof HTMLElement)cancel.click();const scope=[...document.querySelectorAll('.session-bar button')].find(b=>b.textContent?.includes('资料库')||b.textContent?.includes('Library'));if(scope instanceof HTMLElement)scope.click();return !!scope;})()`,
+            );
+            await wait(500);
+            await shoot('main-rag-scope');
           } catch (e) {
             console.warn('[main] screenshot failed:', (e as Error).message);
           }
@@ -453,6 +565,9 @@ function bootstrap(): void {
   /** normal boot: warm the ASR worker, bind hotkeys, show the overlay */
   function startMainApp(): void {
     void startAsr();
+    if (settings.data.rag.enabled && settings.data.rag.rootPath) {
+      queueRagLifecycle();
+    }
     registerHotkeys();
     syncAutoLaunch();
     createWindow();
@@ -519,7 +634,42 @@ function bootstrap(): void {
     });
   }
 
+  if (process.env.MC_SMOKE_NONCE) {
+    app.on('web-contents-created', (_event, contents) => {
+      contents.on('render-process-gone', (_event, details) => {
+        writeSmokeEvidence('fatal', { stage: 'renderer-gone', reason: details.reason, exitCode: details.exitCode });
+      });
+      contents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+        if (isMainFrame) writeSmokeEvidence('fatal', { stage: 'renderer-load', code });
+      });
+    });
+    app.on('child-process-gone', (_event, details) => {
+      writeSmokeEvidence('child-process-gone', { type: details.type, reason: details.reason, exitCode: details.exitCode });
+    });
+  }
+
   app.whenReady().then(() => {
+    // Explicit no-secret CI probe: load the actual N-API binary in Electron,
+    // including packaged asar-unpacked resolution. No model or inference runs.
+    if (process.env.MC_SMOKE_NATIVE === '1') {
+      try {
+        const ort = createRequire(__filename)('onnxruntime-node') as {
+          listSupportedBackends(): { name: string }[];
+        };
+        const backends = ort.listSupportedBackends().map((backend) => backend.name);
+        writeSmokeEvidence('native-loaded', { platform: process.platform, arch: process.arch, backends });
+        console.log('[smoke-native] loaded', JSON.stringify({ platform: process.platform, arch: process.arch, backends }));
+      } catch (error) {
+        // This hook is opt-in only; loader diagnostics contain package paths,
+        // never a request, credential, transcript, or knowledge document.
+        const failure = error as NodeJS.ErrnoException;
+        writeSmokeEvidence('fatal', { stage: 'native-load', code: failure.code ?? 'LOAD_ERROR' });
+        console.error('[smoke-native] failed', failure.code ?? 'LOAD_ERROR', failure.message);
+        app.exit(1);
+        return;
+      }
+    }
+
     // users who never chose a UI language get their OS language (zh → zh, else en)
     osLang = app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
     settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'), cipher(), osLang);
@@ -577,7 +727,7 @@ function bootstrap(): void {
           `[prewarm] ${reason}: cache_hit=${r.usage?.prompt_cache_hit_tokens ?? '?'} cache_miss=${r.usage?.prompt_cache_miss_tokens ?? '?'} prompt=${r.usage?.prompt_tokens ?? '?'}`,
         );
       } catch (e) {
-        console.warn('[prewarm] failed:', (e as Error).message);
+        console.warn('[prewarm] failed');
       }
     }
 
@@ -630,12 +780,13 @@ function bootstrap(): void {
     // cloud engines can't race the subscription (stuck "模型加载中" bug)
     ipcMain.handle(IPC.asrReplay, () => ({ ready: asr.lastReady, status: asr.lastStatus }));
     ipcMain.handle(IPC.settingsSet, (_e, patch: SettingsPatch) => {
+      const ragBefore = { ...settings.data.rag };
+      if (patch.rag?.rootPath !== undefined) {
+        patch = { ...patch, rag: { ...patch.rag, rootPath: validatedRagRoot(patch.rag.rootPath) } };
+      }
       settings.applyPatch(patch);
       if (patch.ui?.hotkeyToggle !== undefined || patch.ui?.hotkeyShot !== undefined) {
         registerHotkeys();
-      }
-      if (patch.ui?.stealth !== undefined) {
-        win?.setContentProtection(patch.ui.stealth);
       }
       // the tray menu is a snapshot: rebuild it in the newly chosen language
       if (patch.ui?.lang !== undefined) refreshTray();
@@ -659,6 +810,12 @@ function bootstrap(): void {
       } else if (patch.asr?.language) {
         asr.setLanguage(patch.asr.language);
       }
+      if (patch.rag && settings.data.onboarding.completed) {
+        if (ragBefore.enabled !== settings.data.rag.enabled || ragBefore.rootPath !== settings.data.rag.rootPath) {
+          invalidateRag();
+        }
+        queueRagLifecycle();
+      }
       return publicSettings();
     });
     // ---- first-run wizard state (settings v2) ----
@@ -669,6 +826,7 @@ function bootstrap(): void {
       // bridge is live. tools/packaged-smoke.mjs asserts it.
       if (!wizardReadyLogged && setupWin && e.sender === setupWin.webContents) {
         wizardReadyLogged = true;
+        writeSmokeEvidence('setup-ipc');
         console.log(SETUP_READY_MARKER);
       }
       return settings.getOnboarding();
@@ -810,7 +968,7 @@ function bootstrap(): void {
         try {
           knowledge.setFromText(readFileSync(r.filePaths[0], 'utf8'));
         } catch (e) {
-          console.error('[knowledge] import failed:', (e as Error).message);
+          console.error('[knowledge] import failed');
         }
       }
       return { chars: knowledge.chars };
@@ -819,6 +977,26 @@ function bootstrap(): void {
       knowledge.clear();
       return { chars: knowledge.chars };
     });
+    ipcMain.handle(IPC.ragChooseRoot, async (): Promise<string | null> => {
+      const result = await dialog.showOpenDialog({
+        title: T().ragChooseRootTitle,
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      return validatedRagRoot(result.filePaths[0]);
+    });
+    ipcMain.handle(IPC.ragStatusGet, () => visibleRagStatus());
+    ipcMain.handle(IPC.ragDocumentsGet, () => ragActiveEpoch === ragEpoch ? rag.currentDocuments : []);
+    const scanRag = (rebuild: boolean) => {
+      const epoch = ragEpoch;
+      return enqueueRag(epoch, async () => {
+        await ensureRagStarted(epoch);
+        if (epoch !== ragEpoch || quitting) throw new Error('Knowledge base configuration changed');
+        return rag.scan(settings.data.rag.rootPath!, rebuild);
+      });
+    };
+    ipcMain.handle(IPC.ragScan, () => scanRag(false));
+    ipcMain.handle(IPC.ragRebuild, () => scanRag(true));
     ipcMain.handle(IPC.knowledgePick, async (_e, slot: 'resume' | 'jd' = 'resume') => {
       const r = await dialog.showOpenDialog({
         title: slot === 'jd' ? T().pickJdTitle : T().pickResumeTitle,
@@ -832,7 +1010,7 @@ function bootstrap(): void {
         const text = await extractDocText(r.filePaths[0]);
         return { name: basename(r.filePaths[0]), text, chars: text.length };
       } catch (e) {
-        console.error('[knowledge] pick failed:', (e as Error).message);
+        console.error('[knowledge] pick failed');
         return null;
       }
     });
@@ -920,80 +1098,100 @@ function bootstrap(): void {
         return null;
       }
     });
-    ipcMain.handle(IPC.stealthSet, (_e, on: boolean) => {
-      settings.applyPatch({ ui: { stealth: on } });
-      win?.setContentProtection(on);
-      return on;
+    ipcMain.handle(IPC.stealthSet, (event, on: boolean) => {
+      if (!win || win.isDestroyed() || win.webContents !== event.sender) throw new Error('Main window unavailable');
+      return saveProtectionPreference(on, next => settings.applyPatch({ ui: { stealth: next } }), publicSettings);
     });
     ipcMain.on(IPC.winHide, () => win?.hide());
     ipcMain.on(IPC.appQuit, () => app.quit());
 
     // ---- LLM (R4): streaming answers; key stays in the main process ----
-    const llmControllers = new Map<string, AbortController>();
     ipcMain.on(IPC.llmAsk, (_e, payload: LlmAskPayload) => {
-      const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
+      let ac: AbortController | undefined;
+      const sendEv = (ev: LlmEvent) => {
+        if (!ac?.signal.aborted) win?.webContents.send(IPC.llmEvent, ev);
+      };
+      llmControllers.get(payload.requestId)?.abort();
+      rag.cancel(payload.requestId);
       const apiKey = settings.getLlmApiKey();
       if (!apiKey) {
         sendEv({ requestId: payload.requestId, kind: 'error', message: T().noApiKey });
         return;
       }
-      const ac = new AbortController();
-      llmControllers.set(payload.requestId, ac);
-      const isTranslate = payload.mode === 'translate';
-      // session dual-slot material first; the global default KB only fills in
-      // when the session has nothing (translate stays a clean pass-through)
-      const hasMaterial = !!(payload.resume || payload.jd || payload.background);
-      const messages = buildAnswerMessages({
-        mode: payload.mode,
-        question: payload.question,
-        freeQuestion: payload.freeQuestion,
-        recentTranscript: payload.recentTranscript,
-        answerLang: payload.answerLang ?? settings.data.llm.answerLang,
-        history: payload.history,
-        resume: isTranslate ? undefined : payload.resume,
-        jd: isTranslate ? undefined : payload.jd,
-        memo: isTranslate ? undefined : payload.memo,
-        background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
-      });
+      ac = new AbortController();
+      const controller = ac;
+      llmControllers.set(payload.requestId, controller);
+      void (async () => {
+        const isTranslate = payload.mode === 'translate';
+        const retrieval = await retrieveForAnswer({
+          host: rag,
+          requestId: payload.requestId,
+          enabled: settings.data.rag.enabled && ragActiveEpoch === ragEpoch,
+          scope: payload.ragScope,
+          mode: payload.mode,
+          question: payload.mode === 'free' ? payload.freeQuestion ?? '' : payload.question ?? '',
+          recentTranscript: payload.recentTranscript,
+        });
+        if (controller.signal.aborted) return;
 
-      // "answer with multimodal": route through the vision provider (proxy-aware,
-      // non-streaming). Otherwise stream from the text LLM (direct, fastest).
-      const useVision =
-        settings.data.llm.answerWithVision &&
-        payload.mode !== 'translate' &&
-        !!settings.data.vision.baseUrl &&
-        !!settings.data.vision.model &&
-        !!settings.getVisionApiKey();
+        // session dual-slot material first; the global default KB only fills in
+        // when the session has nothing (translate stays a clean pass-through)
+        const hasMaterial = !!(payload.resume || payload.jd || payload.background);
+        const messages = buildAnswerMessages({
+          mode: payload.mode,
+          question: payload.question,
+          freeQuestion: payload.freeQuestion,
+          recentTranscript: payload.recentTranscript,
+          answerLang: payload.answerLang ?? settings.data.llm.answerLang,
+          history: payload.history,
+          resume: isTranslate ? undefined : payload.resume,
+          jd: isTranslate ? undefined : payload.jd,
+          memo: isTranslate ? undefined : payload.memo,
+          background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
+          retrievedContext: retrieval.context,
+        });
 
-      // a real answer request refreshes the provider-side prefix cache itself
-      if (!isTranslate && !useVision && payload.mode !== 'free') {
-        lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
-        lastPrefixActivity = Date.now();
-      }
+        // "answer with multimodal": route through the vision provider (proxy-aware,
+        // non-streaming). Otherwise stream from the text LLM (direct, fastest).
+        const useVision =
+          settings.data.llm.answerWithVision &&
+          payload.mode !== 'translate' &&
+          !!settings.data.vision.baseUrl &&
+          !!settings.data.vision.model &&
+          !!settings.getVisionApiKey();
 
-      const work = useVision
-        ? visionChat(
-            {
-              baseUrl: settings.data.vision.baseUrl!,
-              model: settings.data.vision.model!,
-              apiKey: settings.getVisionApiKey()!,
-              proxyUrl: settings.data.vision.proxyUrl,
-            },
-            messages,
-            ac.signal,
-          ).then((text) => {
-            sendEv({ requestId: payload.requestId, kind: 'delta', text });
-            return { text };
-          })
-        : chatStream(
-            { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
-            messages,
-            { onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }) },
-            ac.signal,
-          );
+        // a real answer request refreshes the provider-side prefix cache itself
+        if (!isTranslate && !useVision && payload.mode !== 'free') {
+          lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
+          lastPrefixActivity = Date.now();
+        }
 
-      work
-        .then((r) => {
+        const result = useVision
+          ? await visionChat(
+              {
+                baseUrl: settings.data.vision.baseUrl!,
+                model: settings.data.vision.model!,
+                apiKey: settings.getVisionApiKey()!,
+                proxyUrl: settings.data.vision.proxyUrl,
+              },
+              messages,
+              controller.signal,
+            ).then((text) => {
+              sendEv({ requestId: payload.requestId, kind: 'delta', text });
+              return { text };
+            })
+          : await chatStream(
+              { baseUrl: settings.data.llm.baseUrl, model: settings.data.llm.model, apiKey },
+              messages,
+              { onDelta: (text) => sendEv({ requestId: payload.requestId, kind: 'delta', text }) },
+              controller.signal,
+            );
+
+        return { result, sources: retrieval.sources };
+      })()
+        .then((completed) => {
+          if (!completed || controller.signal.aborted) return;
+          const { result: r, sources } = completed;
           const u = (r as ChatResult).usage;
           if (u) {
             // prewarm acceptance signal: after a warm, hit ≈ prefix length
@@ -1001,18 +1199,26 @@ function bootstrap(): void {
               `[llm] done mode=${payload.mode} cache_hit=${u.prompt_cache_hit_tokens ?? '?'} cache_miss=${u.prompt_cache_miss_tokens ?? '?'}`,
             );
           }
-          sendEv({ requestId: payload.requestId, kind: 'done', text: r.text });
+          sendEv({
+            requestId: payload.requestId,
+            kind: 'done',
+            text: r.text,
+            ...(sources.length ? { sources } : {}),
+          });
         })
         .catch((e: Error) => {
-          if (ac.signal.aborted) return; // user cancelled — not an error
-          console.error('[llm] request failed:', e.message);
+          if (controller.signal.aborted) return; // user cancelled — not an error
+          console.error('[llm] request failed (details shown only in the requesting UI)');
           sendEv({ requestId: payload.requestId, kind: 'error', message: e.message });
         })
-        .finally(() => llmControllers.delete(payload.requestId));
+        .finally(() => {
+          if (llmControllers.get(payload.requestId) === controller) llmControllers.delete(payload.requestId);
+        });
     });
     ipcMain.on(IPC.llmCancel, (_e, requestId: string) => {
       llmControllers.get(requestId)?.abort();
       llmControllers.delete(requestId);
+      rag.cancel(requestId);
     });
 
     // P1-5: fold a finished Q&A into the rolling interview memo. Async and
@@ -1030,7 +1236,7 @@ function bootstrap(): void {
           );
           return clampMemo(r.text);
         } catch (e) {
-          console.warn('[memo] update failed:', (e as Error).message);
+          console.warn('[memo] update failed');
           return '';
         }
       },
@@ -1053,8 +1259,19 @@ function bootstrap(): void {
     // the capture automatically (content protection). ----
     ipcMain.on(
       IPC.shotAsk,
-      (_e, payload: { requestId: string; question: string; background?: string; imageDataUrl?: string }) => {
-      const sendEv = (ev: LlmEvent) => win?.webContents.send(IPC.llmEvent, ev);
+      (_e, payload: {
+        requestId: string;
+        question: string;
+        background?: string;
+        imageDataUrl?: string;
+        ragScope?: RagScope;
+      }) => {
+      let ac: AbortController | undefined;
+      const sendEv = (ev: LlmEvent) => {
+        if (!ac?.signal.aborted) win?.webContents.send(IPC.llmEvent, ev);
+      };
+      llmControllers.get(payload.requestId)?.abort();
+      rag.cancel(payload.requestId);
       const vision = settings.data.vision;
       const apiKey = settings.getVisionApiKey();
       if (!vision.baseUrl || !vision.model || !apiKey) {
@@ -1065,46 +1282,71 @@ function bootstrap(): void {
         });
         return;
       }
-      const ac = new AbortController();
-      llmControllers.set(payload.requestId, ac);
+      ac = new AbortController();
+      const controller = ac;
+      llmControllers.set(payload.requestId, controller);
       // region mode provides a pre-cropped image; else capture the full screen
       const imgP = payload.imageDataUrl
         ? Promise.resolve(payload.imageDataUrl)
         : desktopCapturer
             .getSources({ types: ['screen'], thumbnailSize: { width: 1600, height: 900 } })
             .then((sources) => sources[0].thumbnail.toDataURL());
-      imgP
-        .then((dataUrl) =>
-          visionChat(
+      const retrievalP = retrieveForAnswer({
+        host: rag,
+        requestId: payload.requestId,
+        enabled: settings.data.rag.enabled && ragActiveEpoch === ragEpoch,
+        scope: payload.ragScope,
+        mode: 'free',
+        question: payload.question,
+        recentTranscript: [],
+      });
+      Promise.all([imgP, retrievalP])
+        .then(([dataUrl, retrieval]) => {
+          if (controller.signal.aborted) return undefined;
+          return visionChat(
             { baseUrl: vision.baseUrl!, model: vision.model!, apiKey, proxyUrl: vision.proxyUrl },
-            buildVisionMessages(payload.question, dataUrl, payload.background || knowledge.text),
-            ac.signal,
-          ),
-        )
-        .then((text) => {
+            buildVisionMessages(
+              payload.question,
+              dataUrl,
+              payload.background || knowledge.text,
+              retrieval.context,
+            ),
+            controller.signal,
+          ).then((text) => ({ text, sources: retrieval.sources }));
+        })
+        .then((result) => {
+          if (!result || controller.signal.aborted) return;
+          const { text, sources } = result;
           sendEv({ requestId: payload.requestId, kind: 'delta', text });
-          sendEv({ requestId: payload.requestId, kind: 'done', text });
+          sendEv({
+            requestId: payload.requestId,
+            kind: 'done',
+            text,
+            ...(sources.length ? { sources } : {}),
+          });
         })
         .catch((e: Error) => {
-          if (ac.signal.aborted) return;
-          console.error('[vision] request failed:', e.message);
+          if (controller.signal.aborted) return;
+          console.error('[vision] request failed (details shown only in the requesting UI)');
           sendEv({ requestId: payload.requestId, kind: 'error', message: e.message });
         })
-        .finally(() => llmControllers.delete(payload.requestId));
+        .finally(() => {
+          if (llmControllers.get(payload.requestId) === controller) llmControllers.delete(payload.requestId);
+        });
     });
 
     // ---- ASR: warm the worker at launch (PLAN §6.3) ----
     asr.onEvent((ev: AsrEvent) => {
       if (ev.kind === 'segment') {
         const e2e = ev.timings.inferEndTs - ev.timings.speechEndTs;
-        console.log(`[asr] #${ev.id} (${ev.lang ?? '?'}, ${ev.audioMs}ms audio, e2e ${e2e}ms) ${ev.text}`);
+        console.log(`[asr] #${ev.id} (${ev.lang ?? '?'}, ${ev.audioMs}ms audio, e2e ${e2e}ms, chars=${ev.text.length})`);
       } else if (ev.kind === 'ready') {
         console.log(`[asr] ready ep=${ev.ep} load=${ev.loadMs}ms warm=${ev.warmMs}ms gpuSuspect=${ev.gpuSuspect}`);
         if (process.env.MC_E2E_QUIT_ON_ASR_READY === '1') {
           setTimeout(() => app.quit(), 250);
         }
       } else if (ev.kind === 'error') {
-        console.error(`[asr] error (fatal=${ev.fatal}): ${ev.message}`);
+        console.error(`[asr] error (fatal=${ev.fatal}; details available in local diagnostics)`);
         // only fatal events belong in the support report — a transient
         // per-segment failure would flood the 50-entry buffer
         if (ev.fatal) recordDiagnosticError('asr', ev.message);
@@ -1142,6 +1384,10 @@ function bootstrap(): void {
     globalShortcut.unregisterAll();
     tray.destroy();
     void asr.stop();
+    ragEpoch += 1;
+    for (const controller of llmControllers.values()) controller.abort();
+    llmControllers.clear();
+    void rag.stop();
     void sidecar.stop();
   });
 

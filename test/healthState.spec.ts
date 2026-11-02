@@ -24,6 +24,7 @@ function settings(over: Partial<PublicSettings> = {}): PublicSettings {
   return {
     version: 2,
     weakCrypto: false,
+    rag: { enabled: false },
     onboarding: { schemaVersion: 1, completed: true },
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',

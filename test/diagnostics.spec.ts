@@ -114,7 +114,7 @@ function seededStore(): SettingsStore {
   store.applyPatch({
     llm: {
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      model: 'deepseek-flash',
       apiKey: 'sk-deepseek-supersecret-0001',
       providerId: 'deepseek',
     },
@@ -228,7 +228,7 @@ describe('buildDiagnosticsReport', () => {
     expect(report).toContain('win32 x64 10.0.22631');
     expect(report).toContain('ASR backend          : cloud-realtime');
     expect(report).toContain('ASR worker           : ready=yes state=listening ep=cloud-rt');
-    expect(report).toContain('LLM provider         : deepseek / deepseek-chat');
+    expect(report).toContain('LLM provider         : deepseek / deepseek-flash');
     expect(report).toContain('Vision configured    : yes (gemini / gemini-2.5-flash)');
     expect(report).toContain('API keys configured  : llm=yes vision=yes asr-cloud=no asr-realtime=yes');
     expect(report).toContain('Key storage          : OS-encrypted');

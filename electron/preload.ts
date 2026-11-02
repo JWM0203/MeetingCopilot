@@ -11,6 +11,8 @@ import {
   type ProviderTestRequest,
   type ProviderTestResult,
   type PublicSettings,
+  type RagDocumentStatus,
+  type RagStatus,
   type SessionsFile,
   type SettingsPatch,
   type TrayCommandPayload,
@@ -30,9 +32,14 @@ export interface McApi {
   clearKnowledge(): Promise<{ chars: number }>;
   /** pick a resume/JD document for the current session (.md/.txt/.docx/.pdf) */
   pickKnowledge(slot: KbSlot): Promise<{ name: string; text: string; chars: number } | null>;
+  chooseRagRoot(): Promise<string | null>;
+  getRagStatus(): Promise<RagStatus>;
+  getRagDocuments(): Promise<RagDocumentStatus[]>;
+  scanRag(rebuild?: boolean): Promise<RagStatus>;
+  onRagStatus(cb: (status: RagStatus) => void): () => void;
   loadSessions(): Promise<SessionsFile>;
   saveSessions(data: SessionsFile): void;
-  setStealth(on: boolean): Promise<boolean>;
+  setStealth(on: boolean): Promise<PublicSettings>;
   sendPcm(buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me'): void;
   captureStarted(): void;
   captureStopped(): void;
@@ -46,6 +53,7 @@ export interface McApi {
     question: string;
     background?: string;
     imageDataUrl?: string;
+    ragScope?: import('../shared/rag').RagScope;
   }): void;
   /** capture full screen, drag a stealth region overlay; returns cropped dataURL or null */
   pickRegion(): Promise<string | null>;
@@ -95,6 +103,15 @@ const api: McApi = {
   importKnowledge: () => ipcRenderer.invoke(IPC.knowledgeImport),
   clearKnowledge: () => ipcRenderer.invoke(IPC.knowledgeClear),
   pickKnowledge: (slot) => ipcRenderer.invoke(IPC.knowledgePick, slot),
+  chooseRagRoot: () => ipcRenderer.invoke(IPC.ragChooseRoot),
+  getRagStatus: () => ipcRenderer.invoke(IPC.ragStatusGet),
+  getRagDocuments: () => ipcRenderer.invoke(IPC.ragDocumentsGet),
+  scanRag: (rebuild = false) => ipcRenderer.invoke(rebuild ? IPC.ragRebuild : IPC.ragScan),
+  onRagStatus: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, status: RagStatus) => cb(status);
+    ipcRenderer.on(IPC.ragStatus, listener);
+    return () => ipcRenderer.removeListener(IPC.ragStatus, listener);
+  },
   loadSessions: () => ipcRenderer.invoke(IPC.sessionsLoad),
   saveSessions: (data) => ipcRenderer.send(IPC.sessionsSave, data),
   setStealth: (on) => ipcRenderer.invoke(IPC.stealthSet, on),

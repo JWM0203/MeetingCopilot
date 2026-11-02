@@ -1,47 +1,43 @@
-/**
- * Vision (R5) transport — MAIN PROCESS ONLY (imports electron).
- *
- * DeepSeek has no image input (verified: official API rejects image_url on
- * all models), so screenshot Q&A needs a separate vision provider. Gemini is
- * multimodal but blocked in China, so this path routes through a proxied
- * Electron session (net.request) while the latency-critical DeepSeek answer
- * path stays on direct global fetch. Non-streaming: on-demand + proxy latency
- * dominates, so one round-trip is simpler and robust.
- */
+/** Screenshot transport runs in the main process; a separate optional proxy
+ * never changes the text provider's route. No automatic paid-request retries. */
 import { net, session, type Session } from 'electron';
 import { toProxyRules, type ChatMessage } from './adapter';
+import { LlmRequestError, requestLifetime } from './request';
 
-/** message.content, falling back to reasoning_content (MiMo/thinking models). */
-function extractVisionText(jsonBody: string): string {
-  try {
-    const j = JSON.parse(jsonBody);
-    const m = j?.choices?.[0]?.message ?? {};
-    return (m.content ?? '').trim() || (m.reasoning_content ?? '').trim();
-  } catch {
-    return '';
+export function extractVisionText(jsonBody: string): string {
+  let value: unknown;
+  try { value = JSON.parse(jsonBody); }
+  catch { throw new LlmRequestError('INVALID_RESPONSE', 'Vision provider returned invalid JSON'); }
+  const content = (value as { choices?: { message?: { content?: unknown } }[] } | null)
+    ?.choices?.[0]?.message?.content;
+  // Reasoning-only output is not a completed answer. Do not display it as one.
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new LlmRequestError('INVALID_RESPONSE', 'Vision provider returned no answer text; check model image support');
   }
+  return content.trim();
 }
 
 export interface VisionConfig {
   baseUrl: string;
   model: string;
   apiKey: string;
-  /** e.g. '127.0.0.1:7897'; empty => direct */
   proxyUrl?: string;
+  timeoutMs?: number;
 }
 
-let proxiedSession: Session | null = null;
-
-/**
- * Direct calls (MiMo etc.) use the proven defaultSession. Only when a proxy is
- * configured (Gemini) do we use a dedicated partitioned session with proxy
- * rules — keeping the proxy off every other network call.
- */
-async function pickSession(rules: string): Promise<Session> {
-  if (!rules) return session.defaultSession;
-  if (!proxiedSession) proxiedSession = session.fromPartition('vision-proxy');
-  await proxiedSession.setProxy({ proxyRules: rules });
-  return proxiedSession;
+// Separate sessions by route: concurrent requests cannot overwrite each other's proxy.
+const proxiedSessions = new Map<string, Promise<Session>>();
+let nextProxySessionId = 0;
+function pickSession(rules: string): Promise<Session> {
+  if (!rules) return Promise.resolve(session.defaultSession);
+  let pending = proxiedSessions.get(rules);
+  if (!pending) {
+    const ses = session.fromPartition(`vision-proxy-${nextProxySessionId++}`);
+    pending = ses.setProxy({ proxyRules: rules }).then(() => ses);
+    proxiedSessions.set(rules, pending);
+    pending.catch(() => proxiedSessions.delete(rules));
+  }
+  return pending;
 }
 
 export async function visionChat(
@@ -49,37 +45,47 @@ export async function visionChat(
   messages: ChatMessage[],
   signal?: AbortSignal,
 ): Promise<string> {
-  const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const body = JSON.stringify({ model: config.model, messages, stream: false });
-  const rules = toProxyRules(config.proxyUrl);
-  const ses = await pickSession(rules);
-
-  const raw = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-    const req = net.request({ method: 'POST', url, session: ses });
-    req.setHeader('Content-Type', 'application/json');
-    req.setHeader('Authorization', `Bearer ${config.apiKey}`);
-    const onAbort = () => req.abort();
-    signal?.addEventListener('abort', onAbort, { once: true });
-    req.on('response', (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c.toString('utf8')));
-      res.on('end', () => {
-        signal?.removeEventListener('abort', onAbort);
-        resolve({ status: res.statusCode ?? 0, body: data });
-      });
+  const lifetime = requestLifetime(signal, config.timeoutMs);
+  try {
+    lifetime.signal.throwIfAborted();
+    const raw = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      let req: ReturnType<typeof net.request> | undefined;
+      let settled = false;
+      const finish = (error?: unknown, result?: { status: number; body: string }) => {
+        if (settled) return;
+        settled = true;
+        lifetime.signal.removeEventListener('abort', onAbort);
+        if (error) reject(error);
+        else resolve(result!);
+      };
+      const onAbort = () => {
+        finish(lifetime.signal.reason);
+        req?.abort();
+      };
+      lifetime.signal.addEventListener('abort', onAbort, { once: true });
+      // Keep proxy setup within the same cancellable deadline as the request.
+      void pickSession(toProxyRules(config.proxyUrl)).then((ses) => {
+        if (settled) return;
+        req = net.request({ method: 'POST', url: `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`, session: ses });
+        req.setHeader('Content-Type', 'application/json');
+        req.setHeader('Authorization', `Bearer ${config.apiKey}`);
+        req.on('response', (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk.toString('utf8'); });
+          res.on('error', () => finish(new LlmRequestError('NETWORK_ERROR', 'Vision response connection failed')));
+          res.on('aborted', () => finish(new LlmRequestError('NETWORK_ERROR', 'Vision response was interrupted')));
+          res.on('end', () => finish(undefined, { status: res.statusCode ?? 0, body: data }));
+        });
+        req.on('error', () => finish(new LlmRequestError('NETWORK_ERROR', 'Vision connection failed; check network and proxy settings')));
+        req.on('abort', () => finish(new LlmRequestError('CANCELLED', 'Vision request cancelled')));
+        req.write(JSON.stringify({ model: config.model, messages, stream: false }));
+        req.end();
+      }).catch((error) => finish(error));
     });
-    req.on('error', (e) => {
-      signal?.removeEventListener('abort', onAbort);
-      reject(e);
-    });
-    req.write(body);
-    req.end();
-  });
-
-  if (raw.status < 200 || raw.status >= 300) {
-    throw new Error(`Vision HTTP ${raw.status}: ${raw.body.slice(0, 300)}`);
-  }
-  const text = extractVisionText(raw.body);
-  if (!text) throw new Error(`the vision model returned an empty result: ${raw.body.slice(0, 200)}`);
-  return text;
+    if (raw.status < 200 || raw.status >= 300) {
+      // Raw provider bodies may echo image data, prompts or credentials.
+      throw new LlmRequestError('HTTP_ERROR', `Vision HTTP ${raw.status}; check model image support and account access`, raw.status);
+    }
+    return extractVisionText(raw.body);
+  } finally { lifetime.dispose(); }
 }

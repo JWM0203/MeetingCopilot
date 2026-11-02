@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { hintProps } from '../surfaceHints';
+import { useEffect, useRef, useState } from 'react';
 import type {
   AnswerLang,
   AsrLanguage,
@@ -31,6 +32,9 @@ import { listMics } from '../audio/micCapture';
 import { useT } from '../i18n';
 import { ConnectionResult } from './providers/ConnectionResult';
 import { connectionResultCopy } from './providers/copy';
+import { OPACITY_MAX, OPACITY_MIN, OPACITY_STEP, clampOpacity } from '../../shared/opacity';
+import { applyPanelOpacity } from '../panelOpacity';
+import { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
 
 type AsrBackend = 'local' | 'cloud' | 'cloud-realtime' | 'local-realtime';
 
@@ -116,6 +120,7 @@ function publicSlot(
 export function SettingsPanel({
   settings,
   onSaved,
+  onSettingsChanged,
   onClose,
   onRerunWizard,
   onOpenDiagnostics,
@@ -123,6 +128,7 @@ export function SettingsPanel({
 }: {
   settings: PublicSettings;
   onSaved: (s: PublicSettings) => void;
+  onSettingsChanged?: (s: PublicSettings) => void;
   onClose: () => void;
   /** opens the first-run wizard again (main window stays alive) */
   onRerunWizard?: () => void;
@@ -152,6 +158,14 @@ export function SettingsPanel({
   const [autoLaunch, setAutoLaunch] = useState(settings.ui.autoLaunch);
   const [fontScale, setFontScale] = useState<FontScale>(settings.ui.fontScale ?? 'medium');
   const [theme, setTheme] = useState<ThemeMode>(settings.ui.theme ?? 'dark');
+  const [opacity, setOpacity] = useState<number>(clampOpacity(settings.ui.opacity));
+  // the slider previews straight onto <html>; leaving the panel (Save or
+  // Cancel) puts the persisted value back — after Save that is the new one
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  useEffect(() => {
+    return () => applyPanelOpacity(settingsRef.current.ui.opacity);
+  }, []);
   const [uiLang, setUiLang] = useState<UiLang>(settings.ui.lang);
   const [themDeviceId, setThemDeviceId] = useState(settings.audio.themDeviceId ?? '');
   const [micDeviceId, setMicDeviceId] = useState(settings.audio.micDeviceId ?? '');
@@ -304,6 +318,7 @@ export function SettingsPanel({
           hotkeyShot: hotkeyShot.trim(),
           fontScale,
           theme,
+          opacity,
           lang: uiLang,
           autoLaunch,
         },
@@ -316,6 +331,7 @@ export function SettingsPanel({
       visionKey.reset();
       cloudKey.reset();
       rtKey.reset();
+      settingsRef.current = next; // so the unmount cleanup keeps the saved opacity
       onSaved(next);
     } finally {
       setSaving(false);
@@ -419,7 +435,7 @@ export function SettingsPanel({
           <button
             className="btn btn-sm"
             disabled={!canTest || anyTesting}
-            title={canTest ? undefined : t.settings.testNoKey}
+            {...hintProps(canTest ? undefined : t.settings.testNoKey)}
             onClick={() => void runSlotTest(slotId, target, candidate)}
           >
             {state?.testing ? t.settings.testing : t.settings.testConnection}
@@ -543,6 +559,7 @@ export function SettingsPanel({
           </optgroup>
         </select>
       </div>
+      <div className="settings-hint">{t.settings.asrBackendHint}</div>
       {asrBackend === 'local-realtime' && (
         <div className="settings-row">
           <label>{t.settings.localRtModel}</label>
@@ -629,6 +646,25 @@ export function SettingsPanel({
           <option value="large">{t.settings.fontLarge}</option>
         </select>
       </div>
+      <div className="settings-row">
+        <label>{t.settings.opacityLabel}</label>
+        <div className="settings-slider">
+          <input
+            type="range"
+            min={OPACITY_MIN}
+            max={OPACITY_MAX}
+            step={OPACITY_STEP}
+            value={opacity}
+            onChange={(e) => {
+              const v = clampOpacity(Number(e.target.value));
+              setOpacity(v);
+              applyPanelOpacity(v); // live preview; reverted on Cancel (unmount effect)
+            }}
+          />
+          <span className="settings-slider-value">{Math.round(opacity * 100)}%</span>
+        </div>
+        <span className="settings-inline-hint">{t.settings.opacityHint}</span>
+      </div>
 
       <div className="settings-row">
         <label>{t.settings.hotkeyToggle}</label>
@@ -686,6 +722,12 @@ export function SettingsPanel({
           <span className="settings-inline-hint">{t.settings.rerunWizardHint}</span>
         </div>
       )}
+
+      <KnowledgeBaseSettings settings={live} onChanged={(next) => {
+        setLive(next);
+        settingsRef.current = next;
+        onSettingsChanged?.(next);
+      }} />
 
       {/* ---------------- 高级 ---------------- */}
       <details className="settings-advanced">

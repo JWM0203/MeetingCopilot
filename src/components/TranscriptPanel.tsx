@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { readTranscriptSelection, popupViewportCorrection } from '../transcriptSelection';
+import { hintProps } from '../surfaceHints';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TranscriptSegment } from '../../shared/transcript';
 import { useT } from '../i18n';
 
 interface SelPopup {
-  text: string;
   x: number;
   y: number;
 }
@@ -36,6 +37,7 @@ export function TranscriptPanel({
 }) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [sel, setSel] = useState<SelPopup | null>(null);
 
@@ -50,22 +52,32 @@ export function TranscriptPanel({
     setSel(null);
   };
 
+  useEffect(() => {
+    const clearInvalidSelection = () => {
+      if (!readTranscriptSelection(boxRef.current, window.getSelection())) setSel(null);
+    };
+    document.addEventListener('selectionchange', clearInvalidSelection);
+    return () => document.removeEventListener('selectionchange', clearInvalidSelection);
+  }, []);
+
+  // Measure the rendered, localized toolbar; centering on a tiny selection can
+  // otherwise put half of it outside the window. Correct before paint.
+  useLayoutEffect(() => {
+    if (!sel || !popupRef.current) return;
+    const delta = popupViewportCorrection(popupRef.current.getBoundingClientRect(), window.innerWidth, window.innerHeight);
+    if (Math.abs(delta.x) > 0.5 || Math.abs(delta.y) > 0.5) setSel({ x: sel.x + delta.x, y: sel.y + delta.y });
+  }, [sel]);
+
   const captureSelection = () => {
-    const s = window.getSelection();
-    const text = s?.toString().trim() ?? '';
-    if (!text || !s || s.rangeCount === 0) {
-      setSel(null);
-      return;
-    }
-    const box = boxRef.current;
-    const anchor = s.anchorNode;
-    if (!box || !anchor || !box.contains(anchor.nodeType === 3 ? anchor.parentNode : anchor)) return;
-    const rect = s.getRangeAt(0).getBoundingClientRect();
-    setSel({ text, x: rect.left + rect.width / 2, y: rect.top });
+    const current = readTranscriptSelection(boxRef.current, window.getSelection());
+    if (!current) { setSel(null); return; }
+    const rect = current.range.getBoundingClientRect();
+    setSel({ x: rect.left + rect.width / 2, y: rect.top });
   };
 
   const answerSel = () => {
-    if (sel) onAsk(sel.text);
+    const current = readTranscriptSelection(boxRef.current, window.getSelection());
+    if (answersReady && current) onAsk(current.text);
     window.getSelection()?.removeAllRanges();
     setSel(null);
   };
@@ -75,7 +87,11 @@ export function TranscriptPanel({
       <header className="pane-head">
         <span className="pane-title">{t.transcript.title}</span>
         <span className="pane-hint">{t.transcript.hint}</span>
-        <button className="btn btn-sm" onClick={onClear} title={t.transcript.clearTitle}>
+        <button className="btn btn-sm" onClick={() => {
+          setSel(null);
+          if (readTranscriptSelection(boxRef.current, window.getSelection())) window.getSelection()?.removeAllRanges();
+          onClear();
+        }} {...hintProps(t.transcript.clearTitle)}>
           {t.transcript.clear}
         </button>
       </header>
@@ -89,7 +105,7 @@ export function TranscriptPanel({
               <div
                 key={s.id}
                 className={`bubble ${me ? 'bubble-me' : 'bubble-them'}`}
-                title={t.transcript.bubbleTitle}
+                {...hintProps(t.transcript.bubbleTitle)}
                 onClick={() => {
                   if (!window.getSelection()?.toString().trim()) {
                     void navigator.clipboard.writeText(s.text);
@@ -111,7 +127,7 @@ export function TranscriptPanel({
                 <div className="bubble-btns">
                   <button
                     className="bubble-ask"
-                    title={t.transcript.translateTitle}
+                    {...hintProps(t.transcript.translateTitle)}
                     onClick={(e) => {
                       e.stopPropagation();
                       onTranslate(s);
@@ -123,7 +139,7 @@ export function TranscriptPanel({
                     <button
                       className="bubble-ask"
                       disabled={!answersReady}
-                      title={answersReady ? t.transcript.answerTitle : answersHint}
+                      {...hintProps(answersReady ? t.transcript.answerTitle : answersHint)}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAsk(s.text);
@@ -164,13 +180,14 @@ export function TranscriptPanel({
       {sel && (
         <div
           className="sel-popup"
+          ref={popupRef}
           style={{ left: sel.x, top: sel.y }}
           onMouseDown={(e) => e.preventDefault()}
         >
           <button
             className="btn btn-sm btn-primary"
             disabled={!answersReady}
-            title={answersReady ? undefined : answersHint}
+            {...hintProps(answersReady ? undefined : answersHint)}
             onClick={answerSel}
           >
             {t.transcript.answerSelection}

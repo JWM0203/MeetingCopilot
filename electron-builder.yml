@@ -100,3 +100,9 @@ nsis:
 
 portable:
   artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+
+# Explicit Linux executable name keeps the no-secret boot gate deterministic.
+linux:
+  executableName: meeting-copilot
+mac:
+  category: public.app-category.productivity
