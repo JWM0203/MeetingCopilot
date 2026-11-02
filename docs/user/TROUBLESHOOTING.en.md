@@ -64,7 +64,7 @@ This affects only the local sidecar ASR and local Whisper backends. **Cloud tran
 ## 5. Windows says "Windows protected your PC"
 
 - This beta is **not code-signed**, and SmartScreen shows that warning for every unsigned app.
-- After confirming the file came from the [official Releases page](https://github.com/JWM0203/MeetingCopilot/releases/latest), click "More info" → "Run anyway".
+- After confirming the file came from the [official 0.2.0-beta.2 prerelease page](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2), click "More info" → "Run anyway".
 - Better: verify the SHA256. Every `.exe` ships with a matching `.exe.sha256` containing the hash CI computed. Run `Get-FileHash .\MeetingCopilot-<version>-win-x64.exe -Algorithm SHA256` in PowerShell and compare.
 - Code signing is planned for a later release. Until then, download only from the official release page.
 

@@ -21,7 +21,7 @@ MeetingCopilot is **bring-your-own-key**: no accounts, no server, no fee collect
 
 ## Step 1 — download and install
 
-1. Open the [Releases page](https://github.com/JWM0203/MeetingCopilot/releases/latest).
+1. Open the [0.2.0-beta.2 prerelease](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2).
 2. Download `MeetingCopilot-<version>-win-x64.exe` (installer) or `...-win-x64-portable.exe` (portable). The difference and the install locations are in [INSTALL_WINDOWS.en.md](INSTALL_WINDOWS.en.md).
 3. This beta is not code-signed, so Windows SmartScreen shows "Windows protected your PC". Once you have confirmed the file came from the official release page above, click **More info → Run anyway**.
 4. Verify the download first if you can: every `.exe` ships with a matching `.exe.sha256` file containing the hash CI computed at build time.

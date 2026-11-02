@@ -41,7 +41,7 @@ Protection is best-effort, not guaranteed invisibility. Confirm the current stat
 **Just want to use it?** Download the installer — no Node.js, no Python, no commands.
 **Want to hack on it?** Skip to [Development](#development) and run from source.
 
-**[⬇ Get the latest release](https://github.com/JWM0203/MeetingCopilot/releases/latest)**
+**[⬇ Download 0.2.0-beta.2 (prerelease)](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2)**
 
 | File | Type | Best for |
 |---|---|---|

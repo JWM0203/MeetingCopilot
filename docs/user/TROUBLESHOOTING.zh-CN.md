@@ -64,7 +64,7 @@ macOS 没有系统回环采集，必须先装 BlackHole 之类的虚拟音频设
 ## 五、Windows 提示「已保护你的电脑」
 
 - 当前是**未做代码签名**的 Beta 版本，SmartScreen 对所有未签名应用都会这样提示。
-- 确认文件来自 [官方 Releases 页面](https://github.com/JWM0203/MeetingCopilot/releases/latest) 后，点「更多信息」→「仍要运行」。
+- 确认文件来自 [官方 0.2.0-beta.2 预发布页面](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2) 后，点「更多信息」→「仍要运行」。
 - 更稳妥的做法是核对 SHA256：每个 `.exe` 旁边都有同名的 `.exe.sha256`，里面是 CI 构建时算出的哈希。在 PowerShell 里执行 `Get-FileHash .\MeetingCopilot-<版本>-win-x64.exe -Algorithm SHA256`，比对是否一致。
 - 代码签名会在后续版本处理。在那之前，只从官方发布页下载。
 

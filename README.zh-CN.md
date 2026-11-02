@@ -41,7 +41,7 @@
 **普通用户**：下载安装包直接用——不需要 Node.js、不需要 Python、不用敲命令。
 **开发者**：跳到 [开发](#开发) 一节，从源码运行。
 
-**[⬇ 下载最新版本](https://github.com/JWM0203/MeetingCopilot/releases/latest)**
+**[⬇ 下载 0.2.0-beta.2（预发布）](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2)**
 
 | 文件 | 类型 | 适合 |
 |---|---|---|

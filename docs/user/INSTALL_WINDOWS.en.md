@@ -19,7 +19,7 @@ For people using the packaged build. To run from source, see the Development sec
 
 ## Which file to download
 
-The [Releases page](https://github.com/JWM0203/MeetingCopilot/releases/latest) has two:
+The [0.2.0-beta.2 prerelease](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2) has two:
 
 | File | Type | Best for |
 |---|---|---|
