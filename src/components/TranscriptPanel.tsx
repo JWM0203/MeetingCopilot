@@ -1,6 +1,6 @@
-import { readTranscriptSelection } from '../transcriptSelection';
+import { readTranscriptSelection, popupViewportCorrection } from '../transcriptSelection';
 import { hintProps } from '../surfaceHints';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { TranscriptSegment } from '../../shared/transcript';
 import { useT } from '../i18n';
 
@@ -37,6 +37,7 @@ export function TranscriptPanel({
 }) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [sel, setSel] = useState<SelPopup | null>(null);
 
@@ -58,6 +59,14 @@ export function TranscriptPanel({
     document.addEventListener('selectionchange', clearInvalidSelection);
     return () => document.removeEventListener('selectionchange', clearInvalidSelection);
   }, []);
+
+  // Measure the rendered, localized toolbar; centering on a tiny selection can
+  // otherwise put half of it outside the window. Correct before paint.
+  useLayoutEffect(() => {
+    if (!sel || !popupRef.current) return;
+    const delta = popupViewportCorrection(popupRef.current.getBoundingClientRect(), window.innerWidth, window.innerHeight);
+    if (Math.abs(delta.x) > 0.5 || Math.abs(delta.y) > 0.5) setSel({ x: sel.x + delta.x, y: sel.y + delta.y });
+  }, [sel]);
 
   const captureSelection = () => {
     const current = readTranscriptSelection(boxRef.current, window.getSelection());
@@ -167,6 +176,7 @@ export function TranscriptPanel({
       {sel && (
         <div
           className="sel-popup"
+          ref={popupRef}
           style={{ left: sel.x, top: sel.y }}
           onMouseDown={(e) => e.preventDefault()}
         >

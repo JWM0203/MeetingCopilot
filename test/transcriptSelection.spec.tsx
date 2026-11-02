@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readTranscriptSelection } from '../src/transcriptSelection';
+import { readTranscriptSelection, popupViewportCorrection } from '../src/transcriptSelection';
 const leftA = {} as Node, leftB = {} as Node, outside = {} as Node;
 const root = { contains: (n: Node | null) => n === leftA || n === leftB };
 function selection(overrides: Partial<Selection> = {}, bounds: [Node, Node] = [leftA, leftA]): Selection {
@@ -30,5 +30,18 @@ describe('live transcript selection', () => {
     expect(readTranscriptSelection(root, null)).toBeNull();
     expect(readTranscriptSelection(root, selection({ focusNode: outside }))).toBeNull();
     expect(readTranscriptSelection(null, selection())).toBeNull();
+  });
+});
+
+
+describe('popup viewport correction', () => {
+  it.each([
+    [-36.5, 98, 131.4, 31, 40.5, 0],
+    [600, 98, 131, 31, -95, 0],
+    [20, -20, 131, 31, 0, 24],
+    [20, 370, 131, 31, 0, -25],
+    [20, 98, 131, 31, 0, 0],
+  ])('clamps measured bounds (%s,%s)', (left, top, width, height, x, y) => {
+    expect(popupViewportCorrection({left,top,width,height,right:left+width,bottom:top+height},640,380)).toEqual({x,y});
   });
 });

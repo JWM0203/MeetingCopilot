@@ -280,6 +280,7 @@ body {
 
 .pane-head {
   display: flex;
+  column-gap: 8px;
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;

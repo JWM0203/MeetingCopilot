@@ -144,6 +144,11 @@ try {
       assert.ok(visual.scrollWidth<=visual.width,`horizontal page overflow at ${width}x${height}`);
       for(const x of visual.controls)assert.ok(x.left>=-1&&x.top>=-1&&x.right<=visual.width+1&&x.bottom<=visual.height+1,`clipped control ${JSON.stringify(x)} at ${width}x${height}`);
       results.glass.push(visual);await shot(`glass-${theme}-${width}x${height}`);
+      if(width===640){
+        const direct=page.locator('.bubble').last().locator('.bubble-btns button').first();await direct.scrollIntoViewIfNeeded();
+        const reachable=await direct.evaluate(e=>{const b=e.getBoundingClientRect(),pane=document.querySelector('.transcript').getBoundingClientRect();const hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return{within:b.top>=pane.top&&b.bottom<=pane.bottom&&b.left>=0&&b.right<=innerWidth,hit:e===hit||e.contains(hit)};});
+        assert.equal(reachable.within,true,'compact transcript actions must remain scroll-reachable');assert.equal(reachable.hit,true,'compact transcript action must not be covered');await shot(`glass-${theme}-640x380-scrolled-actions`);
+      }
     }
     await resize(1400,900);
   });
