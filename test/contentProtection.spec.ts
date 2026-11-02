@@ -93,3 +93,13 @@ describe('Windows transparent-window compatibility', () => {
     expect(w.setOpacity).toHaveBeenCalledTimes(4); expect(w.getOpacity()).toBe(1);
   });
 });
+
+
+describe('startup presentation is not refreshed', () => {
+  it.each([true, false])('keeps original startup %s setter path and verifies actual without touching opacity', requested => {
+    const w = windowFixture(!requested); const persist = vi.fn();
+    expect(applyContentProtection(w, requested, persist, 'win32', 'startup')).toEqual({ ok: true, requested, actual: requested });
+    expect(w.getOpacity).not.toHaveBeenCalled(); expect(w.setOpacity).not.toHaveBeenCalled();
+    expect(w.setContentProtection).toHaveBeenCalledExactlyOnceWith(requested); expect(persist).toHaveBeenCalledWith(requested);
+  });
+});

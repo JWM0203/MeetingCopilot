@@ -167,12 +167,14 @@ try {
  if(!startupProtectedMode){
   report.additionalProtectedIntervals=[];report.roundtripOffControls=[];
   await requestProtectionViaToolbar(false);await affinity(false);await page.mouse.move(5,5);await sleep(400);
+  await page.evaluate(()=>{const m=document.getElementById('capture-canary');m.style.width='340px';m.textContent='PUBLIC_OFF_CYCLE_1';});await sleep(300);
   event('runtime-off-control-1');const firstOffStart=Date.now();await sleep(1000);report.roundtripOffControls.push({start:firstOffStart,end:Date.now()});
   for(let cycle=2;cycle<=3;cycle++){
    event('runtime-on-request',{cycle});await requestProtectionViaToolbar(true);await affinity(true);await sleep(400);
    const start=Date.now();event('roundtrip-protected-start',{cycle});await sleep(1300);
    const end=Date.now();event('roundtrip-protected-end',{cycle});report.additionalProtectedIntervals.push({cycle,start,end});
    await requestProtectionViaToolbar(false);await affinity(false);await page.mouse.move(5,5);await sleep(400);
+   await page.evaluate(c=>{const m=document.getElementById('capture-canary');m.style.width=`${300+c*40}px`;m.textContent=`PUBLIC_OFF_CYCLE_${c}`;},cycle);await sleep(300);
    event('runtime-off-control',{cycle});const offStart=Date.now();await sleep(1000);report.roundtripOffControls.push({cycle,start:offStart,end:Date.now()});
   }
   report.rendererAfter=await page.evaluate(async()=>({token:window.__capturePreserveToken,draft:document.querySelector('.answer-input input').value,alpha:getComputedStyle(document.documentElement).getPropertyValue('--app-alpha').trim(),session:document.querySelector('select.session-select').value,settingsOpacity:(await window.mc.getSettings()).ui.opacity}));

@@ -450,7 +450,8 @@ function bootstrap(): void {
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');
-    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }));
+    // Keep initial HWND setup unchanged: opacity refresh is for loaded runtime requests only.
+    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }), process.platform, 'startup');
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
 

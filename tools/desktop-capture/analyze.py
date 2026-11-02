@@ -27,11 +27,15 @@ try:
         samples=[f for f in frames if f['startMs']>=interval['start'] and f['endMs']<=interval['end']]
         assert len(samples)>=10, 'roundtrip protected interval missing native frames'
         protected.extend(samples)
+    offCanaryCounts=[]
     for interval in run.get('roundtripOffControls',[]):
         samples=[f for f in frames if f['startMs']>=interval['start'] and f['endMs']<=interval['end']]
         assert sum(f['canary']>100 for f in samples)>=5, 'runtime OFF roundtrip visible canary missing'
+        offCanaryCounts.append(sorted(f['canary'] for f in samples)[len(samples)//2])
     if run.get('mode')=='runtime-toggle-roundtrip-regression':
         assert run.get('runtimeRoundtripVerified') and len(run.get('uiProtectionRequests',[]))==6, 'six actual UI toggles and preserved renderer required'
+        assert len(offCanaryCounts)==3 and all(b>a+30 for a,b in zip(offCanaryCounts,offCanaryCounts[1:])), 'native canary must grow after each OFF: compositor redraw not established'
+    report['offCanaryCounts']=offCanaryCounts
     report['runtimeRoundtripVerified']=run.get('runtimeRoundtripVerified',False)
     assert baseline and control and protected and post, 'missing recorded phases'
     assert frames[-1]['endMs'] >= at('stop')-250, 'native recording ended before sequence completion'
