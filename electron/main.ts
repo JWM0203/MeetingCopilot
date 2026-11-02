@@ -1,3 +1,4 @@
+import { saveProtectionPreference } from './protectionPreference';
 import { shouldNotifyWindowHidden } from '../shared/windowNoticePolicy';
 import { applyContentProtection, readContentProtection } from './contentProtection';
 /**
@@ -147,7 +148,6 @@ function bootstrap(): void {
     pub.knowledge = { chars: knowledge.chars };
     // Settings are not runtime proof: expose the existing main window's actual state.
     pub.contentProtection = readContentProtection(win, protectionStatus);
-    if (pub.contentProtection.actual !== null) pub.ui.stealth = pub.contentProtection.actual;
     return pub;
   }
 
@@ -450,7 +450,7 @@ function bootstrap(): void {
       },
     });
     win.setAlwaysOnTop(true, 'screen-saver');
-    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }));
+    protectionStatus = applyContentProtection(win, settings.data.ui.stealth, () => { /* keep next-launch preference independent of actual startup state */ });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
 
@@ -784,10 +784,6 @@ function bootstrap(): void {
       if (patch.rag?.rootPath !== undefined) {
         patch = { ...patch, rag: { ...patch.rag, rootPath: validatedRagRoot(patch.rag.rootPath) } };
       }
-      if (patch.ui?.stealth !== undefined) {
-        const result = protectionStatus = applyContentProtection(win, patch.ui.stealth, actual => settings.applyPatch({ ui: { stealth: actual } }));
-        if (!result.ok) throw new Error('Content protection change was not applied. Restart the app and verify before sharing.');
-      }
       settings.applyPatch(patch);
       if (patch.ui?.hotkeyToggle !== undefined || patch.ui?.hotkeyShot !== undefined) {
         registerHotkeys();
@@ -1103,9 +1099,8 @@ function bootstrap(): void {
       }
     });
     ipcMain.handle(IPC.stealthSet, (event, on: boolean) => {
-      // Do not silently succeed with a missing/stale main-window reference.
-      const target = win && !win.isDestroyed() && win.webContents === event.sender ? win : null;
-      return protectionStatus = applyContentProtection(target, on, actual => settings.applyPatch({ ui: { stealth: actual } }));
+      if (!win || win.isDestroyed() || win.webContents !== event.sender) throw new Error('Main window unavailable');
+      return saveProtectionPreference(on, next => settings.applyPatch({ ui: { stealth: next } }), publicSettings);
     });
     ipcMain.on(IPC.winHide, () => win?.hide());
     ipcMain.on(IPC.appQuit, () => app.quit());

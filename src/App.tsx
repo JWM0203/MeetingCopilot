@@ -1,3 +1,4 @@
+import { ProtectionPreference } from './components/ProtectionPreference';
 import { SurfaceHints } from './components/SurfaceHints';
 import { hintProps } from './surfaceHints';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -75,6 +76,7 @@ export function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [protectionBusy, setProtectionBusy] = useState(false);
   const [protectionError, setProtectionError] = useState(false);
+  const [protectionSaveError, setProtectionSaveError] = useState(false);
   const [protectionUnknown, setProtectionUnknown] = useState(true);
   const [asr, setAsr] = useState<AsrUiState>({ phase: 'loading', workerState: 'loading' });
   const [capturing, setCapturing] = useState(false);
@@ -518,14 +520,13 @@ export function App() {
     setProtectionBusy(true);
     try {
       const result = await window.mc.setStealth(!settings.ui.stealth);
-      // Never label the requested value as active without runtime acknowledgement.
-      const known = typeof result.actual === 'boolean';
-      setProtectionUnknown(!known);
-      if (known) setSettings(current => current ? { ...current, ui: { ...current.ui, stealth: result.actual as boolean } } : current);
-      setProtectionError(!result.ok || !known);
+      setSettings(result);
+      setProtectionUnknown(typeof result.contentProtection?.actual !== 'boolean');
+      setProtectionError(result.contentProtection?.ok !== true);
+      setProtectionSaveError(false);
     } catch {
-      setProtectionUnknown(true);
-      setProtectionError(true);
+      // Saving a future preference does not change current runtime protection.
+      setProtectionSaveError(true);
     } finally { setProtectionBusy(false); }
   }, [settings, protectionBusy]);
 
@@ -834,17 +835,8 @@ export function App() {
               ))}
             </select>
           )}
-          <button
-            className={!protectionUnknown && settings?.ui.stealth ? 'btn btn-on' : 'btn'}
-            disabled={!settings || protectionBusy}
-            aria-pressed={protectionUnknown ? undefined : !!settings?.ui.stealth}
-            onClick={() => void toggleStealth()}
-            {...hintProps(window.mc.platform === 'darwin'
-                ? t.titlebar.stealthMacTitle
-                : t.titlebar.stealthTitle)}
-          >
-            {protectionUnknown ? t.titlebar.protectionUnknown : t.titlebar.stealth(!!settings?.ui.stealth)}
-          </button>
+          <ProtectionPreference actual={protectionUnknown ? null : settings?.contentProtection?.actual ?? null}
+            nextLaunch={settings?.ui.stealth ?? true} busy={!settings || protectionBusy} onToggle={() => void toggleStealth()} />
           <button className="btn" onClick={() => setShowHud((v) => !v)} {...hintProps(t.titlebar.hudTitle)} aria-pressed={showHud}>
             HUD
           </button>
@@ -859,6 +851,8 @@ export function App() {
           </button>
         </div>
       </header>
+      <div className="upgrade-banner protection-update" role="status">{t.titlebar.protectionUpdate}</div>
+      {protectionSaveError && <div className="upgrade-banner" role="alert">{t.titlebar.protectionSaveFailed}</div>}
       {protectionError && <div className="upgrade-banner" role="alert">{t.titlebar.protectionFailed}</div>}
 
       {/* grandfathered users (settings.json predates the wizard) get one

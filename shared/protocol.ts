@@ -221,6 +221,7 @@ export interface SettingsFile {
     };
   };
   ui: {
+    /** Next-launch preference; current state is PublicSettings.contentProtection.actual. */
     stealth: boolean;
     hotkeyToggle: string;
     /** global hotkey for region-screenshot Q&A */
@@ -307,6 +308,7 @@ export interface PublicSettings {
     localRealtime: { model?: string };
   };
   ui: {
+    /** Next-launch preference; current state is PublicSettings.contentProtection.actual. */
     stealth: boolean;
     hotkeyToggle: string;
     hotkeyShot: string;
@@ -568,7 +570,7 @@ export const IPC = {
   regionRect: 'region:rect',
   /** send (overlay→main): () — cancel selection */
   regionCancel: 'region:cancel',
-  /** invoke: (boolean) => ContentProtectionResult — verified Electron state, not capture proof */
+  /** invoke: (boolean) => PublicSettings — save next-launch preference only; current protection unchanged */
   stealthSet: 'stealth:set',
   /** send: hide window */
   winHide: 'win:hide',

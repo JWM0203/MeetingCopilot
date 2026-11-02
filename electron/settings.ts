@@ -140,7 +140,7 @@ function mergeWithDefaults(raw: Partial<SettingsFile>, defaults: SettingsFile): 
       realtime: { ...defaults.asr.realtime, ...raw.asr?.realtime },
       localRealtime: { ...defaults.asr.localRealtime, ...raw.asr?.localRealtime },
     },
-    ui: { ...defaults.ui, ...raw.ui, opacity: normalizeStoredOpacity(raw.ui?.opacity) },
+    ui: { ...defaults.ui, ...raw.ui, stealth: typeof raw.ui?.stealth === 'boolean' ? raw.ui.stealth : true, opacity: normalizeStoredOpacity(raw.ui?.opacity) },
     audio: { ...defaults.audio, ...raw.audio },
   };
 }
@@ -331,8 +331,10 @@ export class SettingsStore {
   }
 
   applyPatch(patch: SettingsPatch): void {
+    const previousProtectionPreference = this.data.ui.stealth;
     // Validate before changing any section, so invalid IPC input cannot partially save.
     if (patch.rag !== undefined) validateRagPatch(patch.rag);
+    if (patch.ui?.stealth !== undefined && typeof patch.ui.stealth !== 'boolean') throw new TypeError('Next-launch protection must be boolean');
     if (patch.llm) {
       const { apiKey, ...rest } = patch.llm;
       Object.assign(this.data.llm, stripUndefined(rest));
@@ -378,7 +380,12 @@ export class SettingsStore {
       Object.assign(this.data.ui, ui);
     }
     if (patch.audio) Object.assign(this.data.audio, stripUndefined(patch.audio));
-    this.save();
+    try { this.save(); } catch (error) {
+      // Both preference IPC routes share this boundary: failed saves must not
+      // leave an unacknowledged next-launch choice in memory for a later save.
+      this.data.ui.stealth = previousProtectionPreference;
+      throw error;
+    }
   }
 
   /**

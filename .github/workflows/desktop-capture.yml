@@ -5,6 +5,9 @@ on:
       - 'tools/desktop-capture/**'
       - 'electron/main.ts'
       - 'electron/contentProtection.ts'
+      - 'electron/protectionPreference.ts'
+      - 'electron/settings.ts'
+      - 'src/components/ProtectionPreference.tsx'
       - 'electron/preload.ts'
       - 'shared/protocol.ts'
       - 'src/App.tsx'
@@ -30,16 +33,16 @@ jobs:
       - run: npm run build
         id: build
       - name: Record real native Windows desktop and controlled transitions
-        run: node tools/desktop-capture/run.mjs
+        run: node tools/desktop-capture/next-launch.mjs
       - name: Analyze every sampled frame and package native video
         if: always()
-        run: python tools/desktop-capture/analyze.py
+        run: python tools/desktop-capture/analyze.py release/smoke/desktop-capture-next-launch
       - name: Preserve capture evidence, including blocked or anomalous results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-gdi-desktop-capture
-          path: release/smoke/desktop-capture/
+          name: native-gdi-next-launch-preferences
+          path: release/smoke/desktop-capture-next-launch/
           if-no-files-found: warn
           retention-days: 14
       - name: Fresh-startup protected transitions (independent of runtime toggle failure)

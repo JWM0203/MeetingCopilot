@@ -46,3 +46,18 @@ initial and final OFF native frames for per-pixel panel transparency and solid
 text preservation. The independent startup-protected run remains separate.
 Historical failed-toggle artifacts remain evidence of the previous bug; only a
 complete new native result can validate the compatibility candidate.
+
+### Next-launch preference behavior (current production contract)
+The workflow runs `next-launch.mjs`: omit the saved stealth preference to verify
+new-profile default ON, save OFF through the real UI while current native affinity
+stays 17, normal app.quit and relaunch the same saved profile to verify OFF, then
+save ON while current affinity stays 0 and relaunch to verify ON. Current-state
+and next-launch labels, pending indicator, disk-save acknowledgement, unchanged
+window identity/native opacity, and registered OS hotkey visibility are required.
+The OFF process mutates a public marker three times; real native frame counts
+must change, rejecting frozen native presentation. The separate startup sequence
+still covers hover, four OS hotkeys, settings and region-picker cancellation.
+`run.mjs` without startup mode retains the historical immediate-toggle diagnostic;
+it is not the current preference UI contract and is no longer invoked by CI.
+No restart is automatic in the product; normal quits here are explicit test steps
+after verifying saved preferences. No API keys or live meeting accounts are used.

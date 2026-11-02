@@ -17,6 +17,12 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 </div>
 
+## Update notice: protection changes apply on next launch
+
+Capture protection defaults to **ON for new profiles or a missing preference**; an existing explicit OFF choice is preserved. The toolbar separates **current runtime state** from **next-launch preference**. Changing the preference only saves it: it does not change protection now, restart the app, or rebuild the window. After saving, finish your current work, choose **Quit** (not Hide/minimize to tray), then reopen the app to apply it. Until then, the current state is unchanged.
+
+Protection is best-effort, not guaranteed invisibility. Confirm the current state and test your actual sharing/recording app with harmless content before sharing sensitive notes. See [update details and verification limits](docs/user/FEEDBACK_FIXES.md).
+
 ## Download
 
 **Just want to use it?** Download the installer — no Node.js, no Python, no commands.
@@ -84,7 +90,7 @@ You can reopen the wizard any time from *⚙ Settings → Run the setup wizard a
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
 - 🚀 **Prefix-cache prewarm** — pressing ▶ fires a 1-token request that pre-builds the LLM provider's KV prefix cache, so the first real answer prefills from cache (verified via DeepSeek `prompt_cache_hit_tokens`); kept warm automatically during capture.
 - 🖼️ **Region-screenshot Q&A** — drag-select any screen region (the selection overlay itself is invisible to recording) and ask a vision model (MiMo / Gemini) about it.
-- 🥷 **Capture protection** — content protection plus a global hide/show hotkey. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
+- 🥷 **Capture protection** — next-launch content-protection preference plus a global hide/show hotkey; the preference does not toggle protection during the current run. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
 - 🩺 **Connection tests, service status and local diagnostics** — one click tells you whether a key, the network or the account is at fault (14 normalized error codes), and the diagnostics report is built locally with no keys, transcripts or resume text in it.
 - 🔔 **System tray** — show/hide, start/stop transcription, new session, settings, service status, help and quit, all without a taskbar button. Optional start-at-login, off by default.
 - 🌗 **Dark / light / follow-system themes**, 3-step answer font size, latency HUD, inline translation, multi-session with fully isolated transcript + chat + material per meeting.

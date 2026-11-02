@@ -35,6 +35,10 @@ try:
     if run.get('mode')=='runtime-toggle-roundtrip-regression':
         assert run.get('runtimeRoundtripVerified') and len(run.get('uiProtectionRequests',[]))==6, 'six actual UI toggles and preserved renderer required'
         assert len(offCanaryCounts)==3 and all(b>a+30 for a,b in zip(offCanaryCounts,offCanaryCounts[1:])), 'native canary must grow after each OFF: compositor redraw not established'
+    if run.get('mode')=='next-launch-preference-regression':
+        assert len(run.get('launches',[]))==3 and [x['expected'] for x in run['launches']]==[True,False,True], 'default ON and two normal relaunches required'
+        assert len(run.get('preferences',[]))==2 and all(x['diskSaved'] and x['requested']!=x['current'] for x in run['preferences']), 'saved preference must differ from unchanged current state'
+        assert len(offCanaryCounts)==3 and all(b>a+30 for a,b in zip(offCanaryCounts,offCanaryCounts[1:])), 'OFF native marker must redraw after each mutation'
     report['offCanaryCounts']=offCanaryCounts
     report['runtimeRoundtripVerified']=run.get('runtimeRoundtripVerified',False)
     assert baseline and control and protected and post, 'missing recorded phases'

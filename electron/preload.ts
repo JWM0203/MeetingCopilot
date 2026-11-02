@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC,
   type AppInfo,
-  type ContentProtectionResult,
   type AsrEvent,
   type KbSlot,
   type LlmAskPayload,
@@ -40,7 +39,7 @@ export interface McApi {
   onRagStatus(cb: (status: RagStatus) => void): () => void;
   loadSessions(): Promise<SessionsFile>;
   saveSessions(data: SessionsFile): void;
-  setStealth(on: boolean): Promise<ContentProtectionResult>;
+  setStealth(on: boolean): Promise<PublicSettings>;
   sendPcm(buf: ArrayBuffer, captureTs: number, channel: 'them' | 'me'): void;
   captureStarted(): void;
   captureStopped(): void;
