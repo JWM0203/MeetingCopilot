@@ -1,6 +1,6 @@
 # UI update / 界面大更新
 
-> Development preview, not a published or fully verified release. / 开发预览，尚不代表已发布或已完成全部验证。
+> Beta release preparation; publication and installer availability are not yet confirmed. See [CHANGELOG](../../CHANGELOG.md). / Beta 发布准备中，尚未确认发布和安装包可用状态。完整更新见[更新记录](../../CHANGELOG.md)。
 
 ## 中文
 

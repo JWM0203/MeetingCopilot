@@ -17,11 +17,14 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 </div>
 
-## Major UI update — development preview
+## 0.2.0-beta.2 — release preparation
 
-Neutral light/dark glass styling, readable live text, directly visible per-line Translate/Answer actions, and a live-selection guard for the floating answer button. Compact controls wrap in narrower windows; existing sessions and optional RAG stay connected to the real application.
+- **Added:** optional multi-document RAG with per-session document scope (OFF by default), session-deletion undo and TXT export.
+- **Improved:** neutral light/dark glass UI, panel-only transparency with readable text, directly visible Translate/Answer controls and in-window hover hints.
+- **Fixed:** stale selection popups on session changes/clearing, popup clipping at window edges, recovered ASR warnings, audio start/stop cleanup, cross-session async results and provider compatibility. RAG integration includes index integrity, per-file error isolation, scope-before-ranking, worker recovery and real outside-root symlink regression coverage.
+- **Changed:** capture-protection preferences apply on the next launch; current state is shown separately. New/missing preferences default to ON; explicit OFF choices are preserved.
 
-The next update brings the glass-style interface into the working app while retaining transcription, answers, sessions and the optional document library. Panel-background transparency must keep text and controls readable. This is not a release announcement: interaction, native presentation and packaging checks must pass on the final build. Read the [bilingual UI update and known limitations](docs/user/UI_UPDATE.md).
+Installers for this update are being prepared; this section does not claim publication. See the [bilingual changelog](CHANGELOG.md) for changes, contribution attribution and limitations, and [UI details](docs/user/UI_UPDATE.md).
 
 ## Update notice: protection changes apply on next launch
 
