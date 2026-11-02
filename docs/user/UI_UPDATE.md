@@ -1,6 +1,6 @@
 # UI update / 界面大更新
 
-> Beta release preparation; publication and installer availability are not yet confirmed. See [CHANGELOG](../../CHANGELOG.md). / Beta 发布准备中，尚未确认发布和安装包可用状态。完整更新见[更新记录](../../CHANGELOG.md)。
+> [0.2.0-beta.2 prerelease, November 2, 2026 / 2026 年 11 月 2 日预发布版本](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2): unsigned Windows x64 installer and portable builds with SHA256 checksums; no macOS installer. / 提供未签名的 Windows x64 安装版、免安装版及 SHA256 校验文件，不提供 macOS 安装包。See [CHANGELOG / 完整更新记录](../../CHANGELOG.md)。
 
 ## 中文
 

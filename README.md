@@ -17,14 +17,18 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 </div>
 
-## 0.2.0-beta.2 — release preparation
+## 0.2.0-beta.2 — released November 2, 2026
 
 - **Added:** optional multi-document RAG with per-session document scope (OFF by default), session-deletion undo and TXT export.
 - **Improved:** neutral light/dark glass UI, panel-only transparency with readable text, directly visible Translate/Answer controls and in-window hover hints.
 - **Fixed:** stale selection popups on session changes/clearing, popup clipping at window edges, recovered ASR warnings, audio start/stop cleanup, cross-session async results and provider compatibility. RAG integration includes index integrity, per-file error isolation, scope-before-ranking, worker recovery and real outside-root symlink regression coverage.
 - **Changed:** capture-protection preferences apply on the next launch; current state is shown separately. New/missing preferences default to ON; explicit OFF choices are preserved.
 
-Installers for this update are being prepared; this section does not claim publication. See the [bilingual changelog](CHANGELOG.md) for changes, contribution attribution and limitations, and [UI details](docs/user/UI_UPDATE.md).
+[0.2.0-beta.2 is available as a prerelease](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2), with unsigned Windows x64 installer and portable builds plus SHA256 checksums. No macOS installer is provided. See the [bilingual changelog](CHANGELOG.md) for changes, contribution attribution and limitations, and [UI details](docs/user/UI_UPDATE.md).
+
+## Contributor acknowledgments
+
+Thanks to [@Lupine666](https://github.com/Lupine666) for the local multi-document RAG, index management, per-session scope and answer references contributed in [PR #3](https://github.com/JWM0203/MeetingCopilot/pull/3). This release is based on that contribution with review, fixes and integration, not a direct merge of the original PR. Thanks also to [@rcdfrd](https://github.com/rcdfrd) for the DeepSeek thinking-control and model-migration compatibility fixes proposed in [PR #4](https://github.com/JWM0203/MeetingCopilot/pull/4), which informed this update; that PR was not directly merged.
 
 ## Update notice: protection changes apply on next launch
 

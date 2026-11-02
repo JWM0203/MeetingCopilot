@@ -1,8 +1,14 @@
 # Changelog / 更新记录
 
-## 0.2.0-beta.2 — release candidate / 待发布候选版本
+## 0.2.0-beta.2 — 2026-11-02
 
-Installer build and publication are pending; this is not a release-completion claim. / 安装包构建及发布待完成，此处不代表已发布。
+[Published prerelease / 已发布预发布版本](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2). Unsigned Windows x64 installer and portable builds with SHA256 checksums; no macOS installer. / 提供未签名的 Windows x64 安装版、免安装版及 SHA256 校验文件；不提供 macOS 安装包。
+
+### 贡献致谢 / Contributor acknowledgments
+
+感谢 [@Lupine666](https://github.com/Lupine666) 在 [PR #3](https://github.com/JWM0203/MeetingCopilot/pull/3) 中贡献本地多文档 RAG、资料索引管理、每会话范围与回答引用。本版本在该贡献基础上进行了审查、修复和整合，并非原 PR 直接合并。感谢 [@rcdfrd](https://github.com/rcdfrd) 在 [PR #4](https://github.com/JWM0203/MeetingCopilot/pull/4) 中提出 DeepSeek thinking 控制与模型迁移的兼容性修复，本版本参考了该贡献；该 PR 未直接合并。
+
+Thanks to [@Lupine666](https://github.com/Lupine666) for the local multi-document RAG, index management, per-session scope and answer references contributed in [PR #3](https://github.com/JWM0203/MeetingCopilot/pull/3). This release is based on that contribution with review, fixes and integration, not a direct merge of the original PR. Thanks also to [@rcdfrd](https://github.com/rcdfrd) for the DeepSeek thinking-control and model-migration compatibility fixes proposed in [PR #4](https://github.com/JWM0203/MeetingCopilot/pull/4), which informed this update; that PR was not directly merged.
 
 ### 新增
 

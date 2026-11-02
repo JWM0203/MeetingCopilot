@@ -17,14 +17,18 @@
 
 </div>
 
-## 0.2.0-beta.2 — 安装包准备中
+## 0.2.0-beta.2 — 2026 年 11 月 2 日发布
 
 - **新增：** 可选多文档 RAG 资料库、每会话资料范围（默认关闭）、会话删除撤销与 TXT 导出。
 - **改进：** 深浅中性色玻璃界面、仅调整面板背景的透明度、清晰文字、直接可见的翻译/回答按钮及窗口内悬浮提示。
 - **修复：** 切换会话/清空后的旧选区浮层、窗口边缘浮层裁切、ASR 恢复后的残留警告、音频启停清理、异步结果串会话及服务商兼容。RAG 整合包含索引一致性、逐文件容错、先限定范围再排序、工作进程恢复和真实越界软链接回归测试。
 - **调整：** 采集保护设置改为下次启动生效，当前状态单独显示。新用户或缺少设置时默认开启，已有明确关闭选项保留。
 
-本次安装包正在准备，不代表已发布。完整变更、贡献来源和限制见[中英文更新记录](CHANGELOG.md)，界面细节见[UI 更新说明](docs/user/UI_UPDATE.md)。
+[0.2.0-beta.2 已作为预发布版本发布](https://github.com/JWM0203/MeetingCopilot/releases/tag/v0.2.0-beta.2)，提供未签名的 Windows x64 安装版、免安装版及 SHA256 校验文件，不提供 macOS 安装包。完整变更、贡献来源和限制见[中英文更新记录](CHANGELOG.md)，界面细节见[UI 更新说明](docs/user/UI_UPDATE.md)。
+
+## 贡献致谢
+
+感谢 [@Lupine666](https://github.com/Lupine666) 在 [PR #3](https://github.com/JWM0203/MeetingCopilot/pull/3) 中贡献本地多文档 RAG、资料索引管理、每会话范围与回答引用。本版本在该贡献基础上进行了审查、修复和整合，并非原 PR 直接合并。感谢 [@rcdfrd](https://github.com/rcdfrd) 在 [PR #4](https://github.com/JWM0203/MeetingCopilot/pull/4) 中提出 DeepSeek thinking 控制与模型迁移的兼容性修复，本版本参考了该贡献；该 PR 未直接合并。
 
 ## 更新提示：隐身设置改为下次启动生效
 
