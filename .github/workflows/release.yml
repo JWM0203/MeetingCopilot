@@ -5,28 +5,89 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: meetingcopilot-beta-release
+  cancel-in-progress: false
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/github-script@v7
+        id: check
+        with:
+          script: |
+            const fs = require('fs');
+            const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+            if (!/^\d+\.\d+\.\d+-beta\.\d+$/.test(version)) throw new Error('Only explicit beta versions may use this workflow');
+            const tag = `v${version}`;
+            if (context.eventName === 'push' && context.ref !== `refs/tags/${tag}`) throw new Error('Tag/package version mismatch');
+            async function absent(load, label) {
+              try { await load(); } catch (error) { if (error.status === 404) return; throw error; }
+              throw new Error(`${label} already exists; refusing replacement`);
+            }
+            if (context.eventName === 'workflow_dispatch') {
+              await absent(() => github.rest.git.getRef({...context.repo, ref: `tags/${tag}`}), 'Tag');
+            }
+            await absent(() => github.rest.repos.getReleaseByTag({...context.repo, tag}), 'Release');
+            // Check listed drafts too; the final write-token check can see drafts.
+            const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page: 100});
+            if (releases.some(release => release.tag_name === tag)) throw new Error('Release or draft already exists; refusing replacement');
+            core.setOutput('tag', tag);
   gates:
+    needs: [preflight]
     uses: ./.github/workflows/desktop-gates.yml
     with:
       upload-installers: true
   release:
-    name: draft GitHub release (all desktop gates required)
-    needs: [gates]
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: draft GitHub beta release (all desktop gates required)
+    needs: [preflight, gates]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: windows-installers
           path: artifacts
+      - name: Verify exact gated installer bytes
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          test "$(find . -maxdepth 1 -name '*.exe' -type f | wc -l)" -eq 2
+          test "$(find . -maxdepth 1 -name '*.exe.sha256' -type f | wc -l)" -eq 2
+          sha256sum --check --strict *.exe.sha256
+      - name: Refuse existing tag or release before creation
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            async function absent(load, label) {
+              try { await load(); } catch (error) { if (error.status === 404) return; throw error; }
+              throw new Error(`${label} already exists; refusing replacement`);
+            }
+            if (context.eventName === 'workflow_dispatch') {
+              await absent(() => github.rest.git.getRef({...context.repo, ref: `tags/${tag}`}), 'Tag');
+            }
+            await absent(() => github.rest.repos.getReleaseByTag({...context.repo, tag}), 'Release');
+            // Check listed drafts too; the final write-token check can see drafts.
+            const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page: 100});
+            if (releases.some(release => release.tag_name === tag)) throw new Error('Release or draft already exists; refusing replacement');
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           prerelease: true
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           body_path: CHANGELOG.md
           fail_on_unmatched_files: true
           files: |
