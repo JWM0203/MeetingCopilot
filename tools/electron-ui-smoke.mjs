@@ -146,8 +146,14 @@ try {
       results.glass.push(visual);await shot(`glass-${theme}-${width}x${height}`);
       if(width===640){
         const direct=page.locator('.bubble').last().locator('.bubble-btns button').first();await direct.scrollIntoViewIfNeeded();
-        const reachable=await direct.evaluate(e=>{const b=e.getBoundingClientRect(),pane=document.querySelector('.transcript').getBoundingClientRect();const hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return{within:b.top>=pane.top&&b.bottom<=pane.bottom&&b.left>=0&&b.right<=innerWidth,hit:e===hit||e.contains(hit)};});
-        assert.equal(reachable.within,true,'compact transcript actions must remain scroll-reachable');assert.equal(reachable.hit,true,'compact transcript action must not be covered');await shot(`glass-${theme}-640x380-scrolled-actions`);
+        const measure=()=>direct.evaluate(e=>{const b=e.getBoundingClientRect(),el=document.querySelector('.transcript'),pane=el.getBoundingClientRect();const hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return{button:b.toJSON(),pane:pane.toJSON(),scrollTop:el.scrollTop,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,within:b.top>=pane.top&&b.bottom<=pane.bottom&&b.left>=0&&b.right<=innerWidth,hit:e===hit||e.contains(hit)};});
+        const beforeWheel=await measure();
+        // Prove ordinary user scrolling reaches the complete action, not merely
+        // Playwright's nearest center alignment at a fractional viewport boundary.
+        const paneBounds=await page.locator('.transcript').boundingBox();await page.mouse.move(paneBounds.x+paneBounds.width/2,paneBounds.y+paneBounds.height/2);await page.mouse.wheel(0,400);
+        await poll(async()=>{const x=await measure();visual.scrollReachability={beforeWheel,afterWheel:x};return x.within&&x.hit;},`compact action unreachable after real wheel: ${JSON.stringify(beforeWheel)}`);
+        const reachable=await measure();visual.scrollReachability={beforeWheel,afterWheel:reachable};
+        assert.equal(reachable.within,true,`compact action outside viewport: ${JSON.stringify(reachable)}`);assert.equal(reachable.hit,true,`compact action covered: ${JSON.stringify(reachable)}`);await shot(`glass-${theme}-640x380-scrolled-actions`);
       }
     }
     await resize(1400,900);
