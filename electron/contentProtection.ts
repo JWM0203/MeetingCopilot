@@ -2,6 +2,8 @@ import type { ContentProtectionResult } from '../shared/protocol';
 
 export interface ProtectionWindow {
   isDestroyed(): boolean;
+  getOpacity(): number;
+  setOpacity(opacity: number): void;
   setContentProtection(enabled: boolean): void;
   isContentProtected(): boolean;
 }
@@ -10,11 +12,22 @@ export function applyContentProtection(
   target: ProtectionWindow | null,
   requested: boolean,
   persistActual: (actual: boolean) => void,
+  platform: NodeJS.Platform = process.platform,
 ): ContentProtectionResult {
   if (typeof requested !== 'boolean') throw new TypeError('Content protection requires a boolean');
   if (!target || target.isDestroyed()) return { ok: false, requested, actual: null, code: 'unavailable' };
   let setterFailed = false;
-  try { target.setContentProtection(requested); } catch { setterFailed = true; }
+  try {
+    if (platform === 'win32') {
+      // Re-establish Electron's layered-window attributes before changing capture
+      // affinity. Keep native opacity unchanged; panel alpha remains renderer CSS.
+      const opacity = target.getOpacity();
+      if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Invalid native opacity');
+      target.setOpacity(opacity);
+      if (target.getOpacity() !== opacity) throw new Error('Native opacity changed unexpectedly');
+    }
+    target.setContentProtection(requested);
+  } catch { setterFailed = true; }
   let actual: boolean;
   try { actual = target.isContentProtected(); } catch {
     return { ok: false, requested, actual: null, code: 'unavailable' };

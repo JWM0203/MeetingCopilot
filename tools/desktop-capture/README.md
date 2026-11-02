@@ -33,3 +33,16 @@ This is scientifically independent of the proven runtime toggle mismatch. Result
 A completed diagnostic recorded the app's one-shot “still running / window hidden” system toast over the early baseline. That is real capturable app metadata, not secret-answer canary leakage, and its frames are retained. The production first-hide path can emit this notification; no claim is made that hotkeys can never trigger it. In that run the 22.36-second protected sequence itself had no sampled off-pattern pixels, but the initial baseline gate correctly blocked a full pass.
 
 The recorder now starts **before** baseline validation and waits at most12seconds for ten consecutive native frames satisfying the unchanged clean-background criterion. It does not dismiss, disable, filter or mask notifications; pre-baseline contamination remains in the video and recorded frame metadata. The complete protected sequence and post-control then run unchanged. All cleanup still uses Playwright ElectronApplication.close(), whose installed implementation calls Electron app.quit(); it does not invoke a close-to-tray behavior.
+
+### Runtime compatibility regression
+The default run now requires three actual toolbar ON/OFF round trips on the same
+production HWND and webContents. Each ON requires native affinity 17 and each OFF
+requires affinity 0 plus a visible captured canary. All three protected intervals
+are analyzed. A CSS panel-opacity fixture of 0.6, current native window opacity,
+renderer identity, selected session, and an unsent synthetic DOM input value must
+survive. The disabled input value is seeded solely as a renderer-preservation
+sentinel; this is not a claim of testing a configured live LLM session. Inspect
+initial and final OFF native frames for per-pixel panel transparency and solid
+text preservation. The independent startup-protected run remains separate.
+Historical failed-toggle artifacts remain evidence of the previous bug; only a
+complete new native result can validate the compatibility candidate.

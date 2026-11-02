@@ -3,6 +3,7 @@ import { applyContentProtection, readContentProtection, type ProtectionWindow } 
 function windowFixture(initial: boolean, applies = true) {
   let actual = initial;
   return { isDestroyed: () => false, isContentProtected: () => actual,
+    getOpacity: vi.fn(() => 1), setOpacity: vi.fn((_opacity: number) => {}),
     setContentProtection: vi.fn((requested: boolean) => { if (applies) actual = requested; }) };
 }
 describe('runtime content protection acknowledgement', () => {
@@ -57,5 +58,38 @@ describe('startup/runtime readback', () => {
   it('does not silently clear a prior error on a later passive read', () => {
     const previous = { ok: false, requested: true, actual: false, code: 'not-applied' as const };
     expect(readContentProtection(windowFixture(true), previous)).toMatchObject({ ok: false, actual: true });
+  });
+});
+
+
+describe('Windows transparent-window compatibility', () => {
+  it.each([1, 0.85])('reapplies existing native opacity %s before protection without changing panel alpha', opacity => {
+    const w = windowFixture(false); w.getOpacity.mockReturnValue(opacity);
+    expect(applyContentProtection(w, true, vi.fn(), 'win32').ok).toBe(true);
+    expect(w.setOpacity).toHaveBeenCalledExactlyOnceWith(opacity);
+    expect(w.setOpacity.mock.invocationCallOrder[0]).toBeLessThan(w.setContentProtection.mock.invocationCallOrder[0]);
+  });
+  it.each(['darwin', 'linux'] as const)('leaves native opacity untouched on %s', platform => {
+    const w = windowFixture(false);
+    expect(applyContentProtection(w, true, vi.fn(), platform).ok).toBe(true);
+    expect(w.getOpacity).not.toHaveBeenCalled(); expect(w.setOpacity).not.toHaveBeenCalled();
+  });
+  it('reports refresh failure and preserves actual state rather than claiming protection', () => {
+    const w = windowFixture(false); w.setOpacity.mockImplementation(() => { throw Error('refresh'); });
+    const persist = vi.fn();
+    expect(applyContentProtection(w, true, persist, 'win32')).toMatchObject({ ok: false, actual: false, code: 'not-applied' });
+    expect(w.setContentProtection).not.toHaveBeenCalled(); expect(persist).toHaveBeenCalledWith(false);
+  });
+  it('refuses invalid or unexpectedly changed native opacity', () => {
+    for (const values of [[NaN, NaN], [1, 0.5]]) {
+      const w = windowFixture(false); w.getOpacity.mockReturnValueOnce(values[0]).mockReturnValueOnce(values[1]);
+      expect(applyContentProtection(w, true, vi.fn(), 'win32').ok).toBe(false);
+      expect(w.setContentProtection).not.toHaveBeenCalled();
+    }
+  });
+  it('supports repeated ON/OFF with the same window and unchanged native opacity', () => {
+    const w = windowFixture(false);
+    for (const requested of [true, false, true, false]) expect(applyContentProtection(w, requested, vi.fn(), 'win32')).toMatchObject({ ok: true, actual: requested });
+    expect(w.setOpacity).toHaveBeenCalledTimes(4); expect(w.getOpacity()).toBe(1);
   });
 });

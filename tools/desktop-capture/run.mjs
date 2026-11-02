@@ -13,19 +13,19 @@ const output = join(root, 'release/smoke',startupProtectedMode?'desktop-capture-
 // Dedicated generated-evidence directory only; never reuse stale ready/stop/frames.
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
-const report = { mode:startupProtectedMode?'fresh-startup-protected-transitions':'runtime-toggle-guard', backend: 'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)', requestedFps: 30, events: [],
-  knownRuntimeOffIssue: 'v3: correct main HWND stayed protected/native17 despite production IPC false and settings false. Not fixed or bypassed by this diagnostic; this sequence uses fresh OFF startup and separate fresh OFF post-control.',
+const report = { mode:startupProtectedMode?'fresh-startup-protected-transitions':'runtime-toggle-roundtrip-regression', backend: 'Windows GDI BitBlt(SRCCOPY|CAPTUREBLT)', requestedFps: 30, events: [],
+  knownRuntimeOffIssue: 'v3: correct main HWND stayed protected/native17 despite production IPC false and settings false. Historical evidence retained. Current runtime roundtrip regression requires actual same-window ON/OFF; startup mode is a separate control.',
   scope: 'Controlled Windows Server desktop, built source Electron app; NOT Windows 11, DXGI, ScreenCaptureKit or a meeting remote-view test. Synthetic public canary content only. Renderer/IPC actions are explicitly labelled; hide/show uses real OS keybd_event input.' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const poll = async (fn, label) => { const end=Date.now()+15000; while(Date.now()<end) {if(await fn())return; await sleep(75);} throw new Error(`BLOCKED: ${label}`); };
 const native = args => execFileSync('powershell.exe', ['-NoProfile','-File',join(import.meta.dirname,'native.ps1'),...args], {encoding:'utf8',timeout:10000}).trim();
 const profile = mkdtempSync(join(tmpdir(), 'mc-native-capture-'));
-writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:1,stealth:false,hotkeyToggle:startupProtectedMode?'':'Control+Alt+F10',hotkeyShot:''}}));
+writeFileSync(join(profile,'settings.json'), JSON.stringify({version:2,onboarding:{schemaVersion:1,completed:true},asr:{backend:'cloud'},ui:{lang:'en',autoLaunch:false,opacity:startupProtectedMode?1:0.6,stealth:false,hotkeyToggle:startupProtectedMode?'':'Control+Alt+F10',hotkeyShot:''}}));
 const seed={id:'capture-fixture',name:'PUBLIC_CAPTURE_CANARY',createdAt:1,turns:[{id:'canary',kind:'free',label:'PUBLIC CAPTURE TEST',text:'PUBLIC_CANARY_7391 — synthetic desktop capture compatibility test',status:'done'}],segments:[],resumeText:'',jdText:'',memo:''};
 writeFileSync(join(profile,'sessions.json'),JSON.stringify({version:1,currentId:seed.id,sessions:[seed]}));
 let app,page,recorder,recorderExit,postApp,postProfile,controlApp,protectedProfile;
 const event = (stage, detail={}) => {report.events.push({stage,ms:Date.now(),...detail}); writeFileSync(join(output,'events.json'),JSON.stringify(report.events,null,2));};
-const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
+const state = () => app.evaluate(({BrowserWindow}) => {const w=BrowserWindow.fromId(globalThis.__captureMain); return {id:w.id,webContentsId:w.webContents.id,opacity:w.getOpacity(),visible:w.isVisible(),protected:w.isContentProtected(),bounds:w.getBounds(),handle:w.getNativeWindowHandle().readBigUInt64LE().toString()};});
 async function waitForCleanBaseline() {
  const started=Date.now(),deadline=started+12000;
  report.baselinePreparation={started,timeoutMs:12000,requiredConsecutiveFrames:10,contaminatedFrames:[]};
@@ -43,9 +43,9 @@ async function waitForCleanBaseline() {
  }
  throw new Error('BLOCKED: desktop baseline did not naturally become clean for ten consecutive native frames within12s; all contamination retained, no notification suppression');
 }
-async function requestProtectionViaToolbar() {
- const observation={requested:true,input:'actual Playwright click on production toolbar button',ms:Date.now(),pageUrl:page.url()};
- report.uiProtectionRequest=observation;
+async function requestProtectionViaToolbar(requested=true) {
+ const observation={requested,input:'actual Playwright click on production toolbar button',ms:Date.now(),pageUrl:page.url()};
+ report.uiProtectionRequest=observation;(report.uiProtectionRequests??=[]).push(observation);
  const pageWindow=await app.browserWindow(page);
  observation.pageWindow=await pageWindow.evaluate(w=>({id:w.id,webContentsId:w.webContents.id,handle:w.getNativeWindowHandle().readBigUInt64LE().toString(),url:w.webContents.getURL()}));
  await pageWindow.dispose();
@@ -53,23 +53,23 @@ async function requestProtectionViaToolbar() {
  observation.before={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows()};
  const toggle=page.getByRole('button',{name:/^(Stealth:(On|Off)|Capture protection: unknown)$/});
  const warning=page.getByRole('alert').filter({hasText:'Capture protection could not be applied or confirmed.'});
- assert.equal(await toggle.innerText(),'Stealth:Off');
+ assert.equal(await toggle.innerText(),requested?'Stealth:Off':'Stealth:On');
  assert.equal(await warning.count(),0,'fresh OFF baseline must not already contain the failure warning');
  await toggle.click();
- await poll(async()=>await warning.count()>0 || await toggle.getAttribute('aria-pressed')==='true','toolbar protection operation did not resolve');
+ await poll(async()=>await warning.count()>0 || await toggle.getAttribute('aria-pressed')===String(requested),'toolbar protection operation did not resolve');
  await poll(()=>toggle.isEnabled(),'toolbar protection operation still pending');
  observation.after={settingsStealth:await page.evaluate(async()=>(await window.mc.getSettings()).ui.stealth),...await windows(),label:await toggle.innerText(),ariaPressed:await toggle.getAttribute('aria-pressed')};
  assert.equal(observation.pageWindow.id,observation.after.selectedMain,'real UI must correspond to selected main HWND');
  assert.equal(resolve(observation.after.userData),resolve(profile),'production app must use isolated profile');
  if(await warning.count()>0){
   observation.warning=await warning.innerText();
-  assert.equal(observation.after.label,'Stealth:Off');assert.equal(observation.after.ariaPressed,'false');assert.equal(observation.after.settingsStealth,false);
-  await affinity(false);
+  assert.equal(observation.after.label,requested?'Stealth:Off':'Stealth:On');assert.equal(observation.after.ariaPressed,String(!requested));assert.equal(observation.after.settingsStealth,!requested);
+  await affinity(!requested);
   report.uiGuardVerified=true;
-  event('ui-protection-failure-truthfully-reported',{label:observation.after.label,actualProtection:false});await sleep(1800);
-  throw new Error('BLOCKED: runtime protection could not be enabled. Actual toolbar-click guard verified: stays OFF with persistent warning, settings OFF, native affinity0. This is failure-handling evidence, NOT a privacy pass.');
+  event('ui-protection-failure-truthfully-reported',{label:observation.after.label,actualProtection:!requested});await sleep(1800);
+  throw new Error(`BLOCKED: runtime protection request ${requested} failed; truthful guard verified, NOT a compatibility pass.`);
  }
- assert.equal(observation.after.label,'Stealth:On');assert.equal(observation.after.ariaPressed,'true');assert.equal(observation.after.settingsStealth,true);
+ assert.equal(observation.after.label,requested?'Stealth:On':'Stealth:Off');assert.equal(observation.after.ariaPressed,String(requested));assert.equal(observation.after.settingsStealth,requested);
 }
 async function affinity(expected, { observeOnly = false } = {}) {
  const until=Date.now()+8000;
@@ -114,7 +114,12 @@ try {
  await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.fromId(globalThis.__captureMain);w.show();w.focus();});
  // Fresh production startup with explicit fixture protection OFF, not a retry of
  // the known sticky runtime true-to-false transition. Native 0 is still required.
- await affinity(false);event('visible-positive-control');await sleep(1500);
+ await affinity(false);
+ if(!startupProtectedMode){
+  report.rendererBefore=await page.evaluate(async()=>{window.__capturePreserveToken='PUBLIC_RENDERER_PRESERVE_7391';document.querySelector('.answer-input input').value='PUBLIC_UNSENT_DRAFT_7391';return{token:window.__capturePreserveToken,draft:document.querySelector('.answer-input input').value,alpha:getComputedStyle(document.documentElement).getPropertyValue('--app-alpha').trim(),session:document.querySelector('select.session-select').value,settingsOpacity:(await window.mc.getSettings()).ui.opacity};});
+  report.windowBefore=await state();assert.equal(report.rendererBefore.alpha,'0.6');assert.equal(report.rendererBefore.settingsOpacity,0.6);
+ }
+ event('visible-positive-control');await sleep(1500);
  await page.getByRole('button',{name:'New session',exact:true}).hover();await page.locator('.surface-hint').waitFor();
  event('visible-hover-control');await sleep(700);
  await page.keyboard.press('Escape');
@@ -159,6 +164,22 @@ try {
  if(regionKeyError && !/Target page, context or browser has been closed/.test(regionKeyError.message))throw regionKeyError;
  event('region-cancelled',{productionResult:'cancelled',regionClosed:true,keyDispatchClosedAfterCancel:regionKeyError?.message??null});await sleep(startupProtectedMode?2200:1000);
  event('protected-end');
+ if(!startupProtectedMode){
+  report.additionalProtectedIntervals=[];report.roundtripOffControls=[];
+  await requestProtectionViaToolbar(false);await affinity(false);await page.mouse.move(5,5);await sleep(400);
+  event('runtime-off-control-1');const firstOffStart=Date.now();await sleep(1000);report.roundtripOffControls.push({start:firstOffStart,end:Date.now()});
+  for(let cycle=2;cycle<=3;cycle++){
+   event('runtime-on-request',{cycle});await requestProtectionViaToolbar(true);await affinity(true);await sleep(400);
+   const start=Date.now();event('roundtrip-protected-start',{cycle});await sleep(1300);
+   const end=Date.now();event('roundtrip-protected-end',{cycle});report.additionalProtectedIntervals.push({cycle,start,end});
+   await requestProtectionViaToolbar(false);await affinity(false);await page.mouse.move(5,5);await sleep(400);
+   event('runtime-off-control',{cycle});const offStart=Date.now();await sleep(1000);report.roundtripOffControls.push({cycle,start:offStart,end:Date.now()});
+  }
+  report.rendererAfter=await page.evaluate(async()=>({token:window.__capturePreserveToken,draft:document.querySelector('.answer-input input').value,alpha:getComputedStyle(document.documentElement).getPropertyValue('--app-alpha').trim(),session:document.querySelector('select.session-select').value,settingsOpacity:(await window.mc.getSettings()).ui.opacity}));
+  report.windowAfter=await state();assert.deepEqual(report.rendererAfter,report.rendererBefore,'renderer/session/draft/CSS opacity must survive without rebuilding');
+  for(const key of ['id','webContentsId','handle','opacity'])assert.equal(report.windowAfter[key],report.windowBefore[key],`same window ${key} must survive`);
+  report.runtimeRoundtripVerified=true;event('visible-post-control',{process:'same production main HWND after three actual UI ON/OFF cycles'});await sleep(1200);
+ }else{
  // Preserve the observed runtime-off issue; do not bypass it or mark it fixed.
  report.knownIssue='Prior diagnostic v3: production setStealth(false) returned false and settings became false, but correct main HWND remained protected=true/native affinity17 after normal show and 8s. This diagnostic retains that finding. Fresh startup protected mode uses no runtime toggles; post-control uses a separate fresh OFF production process.';
  event('fresh-post-control-launch');
@@ -174,6 +195,7 @@ try {
  assert.equal(report.postControl.protected,false);assert.equal(report.postControl.native.ok,true);assert.equal(report.postControl.native.affinity,0);
  await postPage.evaluate(()=>{const marker=document.createElement('div');marker.textContent='PUBLIC_CANARY_7391';marker.style.cssText='position:fixed;bottom:0;left:0;width:300px;height:35px;background:#ff00ff;color:#000;font:20px monospace;z-index:2147483647;pointer-events:none';document.body.append(marker);});
  event('visible-post-control',{process:'fresh independent unprotected production app',pid:report.postControl.pid});await sleep(1200);
+ }
  report.sequenceCompleted=true;
 } catch(error) {report.error=error.stack;process.exitCode=1;console.error(error);}
 finally {
