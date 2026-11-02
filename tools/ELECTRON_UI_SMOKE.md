@@ -13,6 +13,13 @@ the project's Electron binary, not a separately downloaded browser.
 
 Coverage:
 
+- Production light/dark theme and panel-opacity settings at 940×560 and
+  640×380; solid text, visible control bounds and rendered screenshots.
+- Real mouse-drag partial/cross-bubble/first-character transcript selections and
+  the floating Answer button; exact text reaches an explicitly mocked provider.
+  Clearing selection, changing sessions and clearing transcripts invalidate the
+  popup. Direct bubble Answer/Translate remain covered with mocked transport.
+
 - Production session load/create/switch/delete/undo/persist and real TXT download;
   imported resume, JD and hidden memo are excluded from export.
 - Same-window hover and keyboard hints, Escape dismissal and no extra Electron

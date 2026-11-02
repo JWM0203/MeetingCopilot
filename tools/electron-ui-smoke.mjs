@@ -21,7 +21,8 @@ writeFileSync(join(profile, 'settings.json'), JSON.stringify({ version: 2,
 }));
 const seed = { id: 'fixture-session', name: 'Fixture session', createdAt: 1,
   turns: [{ id: 'fixture-turn', kind: 'free', label: 'Fixture question', text: 'Fixture answer', status: 'done' }],
-  segments: [{ id: 1, text: 'Fixture transcript', speaker: 'them', startTs: 1, endTs: 2 }],
+  segments: [{ id: 1, text: 'Fixture transcript', speaker: 'them', startTs: 1, endTs: 2 },
+    { id: 2, text: 'Second fixture transcript for cross-bubble selection', speaker: 'them', startTs: 3, endTs: 4 }],
   resumeText: 'PRIVATE_RESUME_NOT_FOR_EXPORT', jdText: 'PRIVATE_JD_NOT_FOR_EXPORT', memo: 'PRIVATE_MEMO_NOT_FOR_EXPORT',
 };
 writeFileSync(join(profile, 'sessions.json'), JSON.stringify({ version: 1, currentId: seed.id, sessions: [seed] }));
@@ -119,6 +120,33 @@ try {
     await poll(async () => (await page.evaluate(() => window.mc.loadSessions())).sessions.length === 2, 'production persistence debounce');
     await shot('04-session-undo-export');
   });
+  await test('production glass theme/opacity settings and compact-window layout preserve solid text', async () => {
+    results.glass=[];
+    const resize = (width,height) => app.evaluate(({BrowserWindow},{width,height}) => {const w=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/index.html'));w.setSize(width,height);return w.getSize();},{width,height});
+    for (const [theme,width,height,alpha] of [['dark',940,560,.55],['dark',640,380,.6],['light',940,560,.55],['light',640,380,.6]]) {
+      await resize(1400,900);await button('Settings').click();
+      await page.locator('.settings-row').filter({has:page.locator('label').filter({hasText:/^Theme$/})}).locator('select').selectOption(theme);
+      const slider=page.locator('.settings-slider input[type=range]');
+      const min=Number(await slider.getAttribute('min')),step=Number(await slider.getAttribute('step'));
+      await slider.focus();await slider.press('Home');for(let i=0;i<Math.round((alpha-min)/step);i++)await slider.press('ArrowRight');
+      assert.equal(Number(await slider.inputValue()),alpha);
+      await button('Save').click();await poll(async()=>await page.locator('.settings').count()===0,'settings save closes production UI');
+      assert.equal((await page.evaluate(()=>window.mc.getSettings())).ui.opacity,alpha);
+      assert.deepEqual(await resize(width,height),[width,height]);
+      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+      const visual=await page.evaluate(()=>{
+        const solid=['body','.app','.bubble','.bubble-text','.turn','.turn-body'].map(selector=>({selector,opacity:getComputedStyle(document.querySelector(selector)).opacity}));
+        const controls=[...document.querySelectorAll('.titlebar button,.titlebar select,.pane-head button,.pane-head select,.answer-input input,.answer-input button,.statusbar button')].map(e=>({text:e.textContent,rect:e.getBoundingClientRect(),display:getComputedStyle(e).display})).filter(x=>x.display!=='none'&&x.rect.width&&x.rect.height).map(x=>({text:x.text.trim(),left:x.rect.left,right:x.rect.right,top:x.rect.top,bottom:x.rect.bottom}));
+        return{theme:document.documentElement.dataset.theme,alpha:getComputedStyle(document.documentElement).getPropertyValue('--app-alpha').trim(),solid,controls,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth};
+      });
+      assert.equal(visual.theme,theme);assert.equal(Number(visual.alpha),alpha);
+      for(const x of visual.solid)assert.equal(x.opacity,'1',`${x.selector}: text must not inherit whole-element alpha`);
+      assert.ok(visual.scrollWidth<=visual.width,`horizontal page overflow at ${width}x${height}`);
+      for(const x of visual.controls)assert.ok(x.left>=-1&&x.top>=-1&&x.right<=visual.width+1&&x.bottom<=visual.height+1,`clipped control ${JSON.stringify(x)} at ${width}x${height}`);
+      results.glass.push(visual);await shot(`glass-${theme}-${width}x${height}`);
+    }
+    await resize(1400,900);
+  });
   // These fixture substitutions exist only inside the test-launched Electron process.
   // No credentials are written, no actual provider/embedding endpoint is called.
   const settings = await page.evaluate(() => window.mc.getSettings());
@@ -127,7 +155,7 @@ try {
     s.llm.apiKeySet = true; s.llm.answerWithVision = true;
     s.vision.apiKeySet = true; s.vision.baseUrl = 'https://fixture.invalid/v1'; s.vision.model = 'fixture-vision';
     s.rag.rootPath = '/test-fixtures';
-    const state = { settings: s, region: 'cancel', provider: 'done', shots: [], asks: [], cancels: [], capture: [], pcm: 0, pendingRegion: null, pendingScan: null, ragPhase: 'disabled' };
+    const state = { settings: s, region: 'cancel', provider: 'done', shots: [], asks: [], translations: [], cancels: [], capture: [], pcm: 0, pendingRegion: null, pendingScan: null, ragPhase: 'disabled' };
     globalThis.__uiFixture = state;
     const handle = (channel, fn) => { ipcMain.removeHandler(channel); ipcMain.handle(channel, fn); };
     const on = (channel, fn) => { ipcMain.removeAllListeners(channel); ipcMain.on(channel, fn); };
@@ -144,6 +172,7 @@ try {
       state.ragPhase = 'embedding'; event.sender.send('rag:status', status());
       return new Promise(resolve => { state.pendingScan = resolve; });
     });
+    handle('llm:translate', (_event, text) => { state.translations.push(text); return 'Fixture inline translation (not a live API)'; });
     handle('asr:replay', () => ({ ready: { kind: 'ready', ep: 'fixture' }, status: { kind: 'status', state: 'listening' } }));
     handle('region:pick', () => {
       if (state.region === 'error') throw new Error('fixture picker failure');
@@ -175,7 +204,7 @@ try {
   await camera.waitFor();
   const state = () => app.evaluate(() => {
     const s = globalThis.__uiFixture;
-    return { shots: s.shots, asks: s.asks, cancels: s.cancels, capture: s.capture, pcm: s.pcm, regionPending: !!s.pendingRegion };
+    return { shots: s.shots, asks: s.asks, translations: s.translations, cancels: s.cancels, capture: s.capture, pcm: s.pcm, regionPending: !!s.pendingRegion };
   });
   const mode = patch => app.evaluate((_electron, patch) => { Object.assign(globalThis.__uiFixture, patch); }, patch);
   const resolveRegion = () => app.evaluate(() => {
@@ -225,6 +254,66 @@ try {
     await page.locator('.turn').last().getByText('Generation ended without an answer.', { exact: true }).waitFor();
     assert.doesNotMatch(await page.locator('.turn').last().locator('.turn-body').innerText(), /Generating|Analyzing/);
     await shot('07-provider-retry-cancel-mock');
+  });
+  await test('real partial and cross-bubble selection toolbar routes exact text to mock provider', async () => {
+    await mode({ provider: 'done' });
+    await page.locator('select.session-select').selectOption(seed.id);
+    await page.locator('.bubble-text').filter({ hasText: 'Second fixture transcript' }).waitFor();
+    const selectByMouse = async (startIndex, startOffset, endIndex, endOffset) => {
+      const points = await page.evaluate(({startIndex,startOffset,endIndex,endOffset}) => {
+        const els = document.querySelectorAll('.transcript .bubble-text');
+        const point = (index, offset) => { const r = document.createRange(); r.setStart(els[index].firstChild, offset); r.collapse(true); const b = r.getBoundingClientRect(); return {x:b.x,y:b.y+b.height/2}; };
+        return {a:point(startIndex,startOffset),b:point(endIndex,endOffset)};
+      }, {startIndex,startOffset,endIndex,endOffset});
+      await page.mouse.move(points.a.x,points.a.y);await page.mouse.down();await page.mouse.move(points.b.x,points.b.y,{steps:16});await page.mouse.up();
+      await page.locator('.sel-popup button').waitFor();
+      const popup=await page.locator('.sel-popup').boundingBox();const view=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));assert.ok(popup.x>=0&&popup.y>=0&&popup.x+popup.width<=view.width&&popup.y+popup.height<=view.height,`selection popup clipped: ${JSON.stringify(popup)}`);
+      return page.evaluate(() => window.getSelection().toString().trim());
+    };
+    const partial = await selectByMouse(0,8,0,18);
+    assert.equal(partial,'transcript','must select arbitrary substring, not entire bubble');
+    const beforePartial = (await state()).asks.length;
+    const popupBounds=await page.locator('.sel-popup').boundingBox();const viewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));assert.ok(popupBounds.x>=0&&popupBounds.y>=0&&popupBounds.x+popupBounds.width<=viewport.width&&popupBounds.y+popupBounds.height<=viewport.height,'floating selection toolbar must not be clipped');
+    await shot('12-partial-selection-toolbar');
+    await page.locator('.sel-popup button').click();
+    await poll(async() => (await state()).asks.length === beforePartial+1,'partial selection request');
+    assert.equal((await state()).asks.at(-1).mode,'segment');assert.equal((await state()).asks.at(-1).question,partial);
+    assert.equal(await page.locator('.sel-popup').count(),0);
+    const across = await selectByMouse(0,8,1,14);
+    assert.ok(across.startsWith('transcript'));assert.ok(across.endsWith('Second fixture'));
+    const beforeAcross = (await state()).asks.length;
+    await shot('13-cross-bubble-selection-toolbar');
+    await page.locator('.sel-popup button').click();
+    await poll(async() => (await state()).asks.length === beforeAcross+1,'cross-bubble selection request');
+    assert.equal((await state()).asks.at(-1).question,across,'exact live selection must reach provider fixture');
+    await selectByMouse(0,8,0,18);
+    const beforeClear = (await state()).asks.length;
+    await page.evaluate(() => window.getSelection().removeAllRanges());
+    await poll(async() => await page.locator('.sel-popup').count()===0,'cleared selection removes stale floating toolbar');
+    assert.equal((await state()).asks.length,beforeClear);
+    // A selection crossing out of the transcript must invalidate, not reuse cached text.
+    await selectByMouse(0,8,0,18);
+    await page.evaluate(() => {const s=window.getSelection(),r=document.createRange();r.setStart(document.querySelector('.bubble-text').firstChild,8);r.setEnd(document.createTreeWalker(document.querySelector('.turn-body'),NodeFilter.SHOW_TEXT).nextNode(),3);s.removeAllRanges();s.addRange(r);});
+    await poll(async() => await page.locator('.sel-popup').count()===0,'outside selection removes stale toolbar');
+    await page.evaluate(() => window.getSelection().removeAllRanges());
+    assert.equal((await state()).asks.length,beforeClear);
+    // Existing per-bubble direct actions remain direct; no demo-only replacement.
+    const first = page.locator('.bubble').first();
+    await first.getByRole('button',{name:'⚡Ans',exact:true}).click();
+    await poll(async() => (await state()).asks.length===beforeClear+1,'direct bubble answer');
+    assert.equal((await state()).asks.at(-1).question,seed.segments[0].text);
+    await first.getByRole('button',{name:'中',exact:true}).click();
+    await first.locator('.bubble-trans').getByText('Fixture inline translation (not a live API)',{exact:true}).waitFor();
+    assert.equal((await state()).translations.at(-1),seed.segments[0].text);
+    await shot('14-direct-bubble-actions');
+    const tiny=await selectByMouse(0,0,0,1);assert.equal(tiny,'F');await shot('15-first-character-selection');
+    await button('New session').click();await poll(async()=>await selected()!==seed.id,'switch away from selected transcript');
+    await poll(async()=>await page.locator('.sel-popup').count()===0,'session switch invalidates selection toolbar');
+    await page.locator('select.session-select').selectOption(seed.id);
+    await page.locator('.bubble-text').filter({hasText:'Fixture transcript'}).first().waitFor();
+    await selectByMouse(0,8,0,18);
+    await page.locator('.pane-transcript .pane-head').getByRole('button',{name:'Clear',exact:true}).click();
+    await poll(async()=>await page.locator('.bubble').count()===0&&await page.locator('.sel-popup').count()===0,'clear transcript removes selection toolbar');
   });
   await test('mock RAG disable during indexing ignores stale result; modal hint layering', async () => {
     await button('Settings').click();

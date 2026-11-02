@@ -1,10 +1,10 @@
+import { readTranscriptSelection } from '../transcriptSelection';
 import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { TranscriptSegment } from '../../shared/transcript';
 import { useT } from '../i18n';
 
 interface SelPopup {
-  text: string;
   x: number;
   y: number;
 }
@@ -51,22 +51,24 @@ export function TranscriptPanel({
     setSel(null);
   };
 
+  useEffect(() => {
+    const clearInvalidSelection = () => {
+      if (!readTranscriptSelection(boxRef.current, window.getSelection())) setSel(null);
+    };
+    document.addEventListener('selectionchange', clearInvalidSelection);
+    return () => document.removeEventListener('selectionchange', clearInvalidSelection);
+  }, []);
+
   const captureSelection = () => {
-    const s = window.getSelection();
-    const text = s?.toString().trim() ?? '';
-    if (!text || !s || s.rangeCount === 0) {
-      setSel(null);
-      return;
-    }
-    const box = boxRef.current;
-    const anchor = s.anchorNode;
-    if (!box || !anchor || !box.contains(anchor.nodeType === 3 ? anchor.parentNode : anchor)) return;
-    const rect = s.getRangeAt(0).getBoundingClientRect();
-    setSel({ text, x: rect.left + rect.width / 2, y: rect.top });
+    const current = readTranscriptSelection(boxRef.current, window.getSelection());
+    if (!current) { setSel(null); return; }
+    const rect = current.range.getBoundingClientRect();
+    setSel({ x: rect.left + rect.width / 2, y: rect.top });
   };
 
   const answerSel = () => {
-    if (sel) onAsk(sel.text);
+    const current = readTranscriptSelection(boxRef.current, window.getSelection());
+    if (answersReady && current) onAsk(current.text);
     window.getSelection()?.removeAllRanges();
     setSel(null);
   };

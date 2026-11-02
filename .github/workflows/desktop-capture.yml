@@ -11,6 +11,9 @@ on:
       - 'electron/preload.ts'
       - 'shared/protocol.ts'
       - 'src/App.tsx'
+      - 'src/styles.css'
+      - 'src/components/TranscriptPanel.tsx'
+      - 'src/transcriptSelection.ts'
       - 'src/i18n.tsx'
       - '.github/workflows/desktop-capture.yml'
   workflow_dispatch:

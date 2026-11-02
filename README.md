@@ -17,6 +17,12 @@ Live transcription of the other side · first-person teleprompter answers · cap
 
 </div>
 
+## Major UI update — development preview
+
+Neutral light/dark glass styling, readable live text, directly visible per-line Translate/Answer actions, and a live-selection guard for the floating answer button. Compact controls wrap in narrower windows; existing sessions and optional RAG stay connected to the real application.
+
+The next update brings the glass-style interface into the working app while retaining transcription, answers, sessions and the optional document library. Panel-background transparency must keep text and controls readable. This is not a release announcement: interaction, native presentation and packaging checks must pass on the final build. Read the [bilingual UI update and known limitations](docs/user/UI_UPDATE.md).
+
 ## Update notice: protection changes apply on next launch
 
 Capture protection defaults to **ON for new profiles or a missing preference**; an existing explicit OFF choice is preserved. The toolbar separates **current runtime state** from **next-launch preference**. Changing the preference only saves it: it does not change protection now, restart the app, or rebuild the window. After saving, finish your current work, choose **Quit** (not Hide/minimize to tray), then reopen the app to apply it. Until then, the current state is unchanged.
@@ -86,10 +92,10 @@ You can reopen the wizard any time from *⚙ Settings → Run the setup wizard a
 - 🌍 **Bilingual (zh / en) out of the box** — the ASR detects Chinese↔English switches automatically mid-meeting, with no settings to touch; one click on the answer-language toggle (`A:EN`) and the teleprompter output flips to English too. Built for English interviews and code-switching conversations.
 - 🌐 **Fully English or Chinese interface** — every label, tooltip, dialog and status message is available in both languages. Switch under *Settings → Appearance → UI Language*; first launch follows your OS language automatically. UI language and answer language are independent, so you can run an English UI while reading Chinese answers, or vice versa.
 - 🧠 **First-person teleprompter answers** — bring your own key, any OpenAI-compatible LLM (DeepSeek recommended). Answers are written to be read aloud verbatim: conclusion first, then 2-3 short points; STAR for behavioral questions; idea → key points → complexity for technical ones. Never invents experience beyond your resume.
-- 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing is local and deterministic, nothing gets uploaded. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
+- 📄 **Per-session resume + JD slots** — import `.md/.txt/.docx/.pdf`; parsing happens locally; material included in an answer request is sent to your configured model provider. Question-type detection (behavioral / technical / smalltalk) appends a zero-latency answering hint.
 - 🔁 **Rolling interview memo** — a structured summary (questions asked / facts you claimed / interviewer focus) updates asynchronously after each answer, so a 60-minute interview stays self-consistent while per-request tokens stay flat.
 - 🚀 **Prefix-cache prewarm** — pressing ▶ fires a 1-token request that pre-builds the LLM provider's KV prefix cache, so the first real answer prefills from cache (verified via DeepSeek `prompt_cache_hit_tokens`); kept warm automatically during capture.
-- 🖼️ **Region-screenshot Q&A** — drag-select any screen region (the selection overlay itself is invisible to recording) and ask a vision model (MiMo / Gemini) about it.
+- 🖼️ **Region-screenshot Q&A** — drag-select a screen region and ask your configured vision model about it. Capture protection is best-effort: a known one-frame/taskbar exposure around region selection remains a limitation; test the actual recording route before use.
 - 🥷 **Capture protection** — next-launch content-protection preference plus a global hide/show hotkey; the preference does not toggle protection during the current run. Windows excludes the window from supported captures; macOS cannot guarantee invisibility against modern ScreenCaptureKit clients.
 - 🩺 **Connection tests, service status and local diagnostics** — one click tells you whether a key, the network or the account is at fault (14 normalized error codes), and the diagnostics report is built locally with no keys, transcripts or resume text in it.
 - 🔔 **System tray** — show/hide, start/stop transcription, new session, settings, service status, help and quit, all without a taskbar button. Optional start-at-login, off by default.
