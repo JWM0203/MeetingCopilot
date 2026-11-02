@@ -941,6 +941,7 @@ export function App() {
 
       <div className="panes">
         <TranscriptPanel
+          key={currentId}
           segments={segments}
           partials={partials}
           answersReady={answersReady}

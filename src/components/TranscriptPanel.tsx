@@ -87,7 +87,11 @@ export function TranscriptPanel({
       <header className="pane-head">
         <span className="pane-title">{t.transcript.title}</span>
         <span className="pane-hint">{t.transcript.hint}</span>
-        <button className="btn btn-sm" onClick={onClear} {...hintProps(t.transcript.clearTitle)}>
+        <button className="btn btn-sm" onClick={() => {
+          setSel(null);
+          if (readTranscriptSelection(boxRef.current, window.getSelection())) window.getSelection()?.removeAllRanges();
+          onClear();
+        }} {...hintProps(t.transcript.clearTitle)}>
           {t.transcript.clear}
         </button>
       </header>
