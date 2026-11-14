@@ -32,6 +32,9 @@ export interface McApi {
   clearKnowledge(): Promise<{ chars: number }>;
   /** pick a resume/JD document for the current session (.md/.txt/.docx/.pdf) */
   pickKnowledge(slot: KbSlot): Promise<{ name: string; text: string; chars: number } | null>;
+  /** pick a project folder for the current session's third slot; main scans it
+   * into a deterministic structure digest (electron/codedigest.ts, no LLM) */
+  pickCode(): Promise<{ name: string; digest: string; chars: number; files: number } | null>;
   chooseRagRoot(): Promise<string | null>;
   getRagStatus(): Promise<RagStatus>;
   getRagDocuments(): Promise<RagDocumentStatus[]>;
@@ -66,7 +69,12 @@ export interface McApi {
   llmCancel(requestId: string): void;
   /** P1-6: warm the DeepSeek prefix cache with the session's material;
    * immediate=true warms even when not capturing (▶ start / material import) */
-  prewarm(payload: { resume?: string; jd?: string; immediate?: boolean }): void;
+  prewarm(payload: {
+    resumeItems?: import('../shared/material').MaterialItem[];
+    jd?: string;
+    codeItems?: import('../shared/material').MaterialItem[];
+    immediate?: boolean;
+  }): void;
   /** P1-5: fold a finished Q&A into the rolling memo ('' = keep the old one) */
   memoUpdate(p: { memo: string; question: string; answer: string }): Promise<string>;
   onLlmEvent(cb: (ev: LlmEvent) => void): () => void;
@@ -103,6 +111,7 @@ const api: McApi = {
   importKnowledge: () => ipcRenderer.invoke(IPC.knowledgeImport),
   clearKnowledge: () => ipcRenderer.invoke(IPC.knowledgeClear),
   pickKnowledge: (slot) => ipcRenderer.invoke(IPC.knowledgePick, slot),
+  pickCode: () => ipcRenderer.invoke(IPC.codePick),
   chooseRagRoot: () => ipcRenderer.invoke(IPC.ragChooseRoot),
   getRagStatus: () => ipcRenderer.invoke(IPC.ragStatusGet),
   getRagDocuments: () => ipcRenderer.invoke(IPC.ragDocumentsGet),

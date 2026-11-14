@@ -45,6 +45,7 @@ const zh = {
     upgradeSkip: '暂时跳过',
     kbNoText: (name: string) =>
       `「${name}」没有可提取的文本（扫描版 PDF？请换文字版或 .md/.txt）`,
+    codeScanEmpty: (name: string) => `「${name}」里没有找到可分析的代码文件`,
   },
   titlebar: {
     start: '▶ 开始',
@@ -120,19 +121,20 @@ const zh = {
     undoDelete: '撤销删除',
     exportText: '导出当前会话转录和问答为 TXT（不包含导入资料）',
     resume: '简历',
-    resumeSetTitle: (name: string, chars: number) =>
-      `简历：${name}（${chars}字）点击更换（.md/.txt/.docx/.pdf）`,
-    resumeEmptyTitle: '导入我的简历（.md/.txt/.docx/.pdf）',
-    resumeRemoveTitle: '移除简历',
+    resumeAddTitle: '添加一份简历（.md/.txt/.docx/.pdf，可添加多份）',
+    resumeItemTitle: (name: string, chars: number) => `简历：${name}（${chars}字）点击移除`,
     jd: 'JD',
     jdSetTitle: (name: string, chars: number) =>
       `岗位JD：${name}（${chars}字）点击更换（.md/.txt/.docx/.pdf）`,
     jdEmptyTitle: '导入岗位JD（.md/.txt/.docx/.pdf）',
     jdRemoveTitle: '移除岗位JD',
+    code: '代码',
+    codeAddTitle: '添加一个项目源码文件夹（本地生成结构摘要，可添加多个）',
+    codeItemTitle: (name: string, chars: number) => `项目代码：${name}（${chars}字）点击移除`,
     clear: '清空',
     clearTitle: '清空本会话对话',
     empty: '点转录里对方那句的「⚡答」让 AI 帮你回答；或在下方随便问。答案会在这里逐条累积。',
-    emptyKbHint: '\n\n提示：点上方「📄简历」「📋JD」导入资料（支持 docx/pdf），回答会更贴合你。',
+    emptyKbHint: '\n\n提示：点上方「📄简历」「📋JD」「🗂代码」导入资料（支持 docx/pdf），回答会更贴合你。',
     stop: '停',
     copy: '复制',
     copyTitle: '复制',
@@ -499,6 +501,7 @@ const en: Dict = {
     upgradeSkip: 'Not now',
     kbNoText: (name: string) =>
       `"${name}" has no extractable text (scanned PDF? Use a text-based file or .md/.txt)`,
+    codeScanEmpty: (name: string) => `No analyzable code files found in "${name}"`,
   },
   titlebar: {
     start: '▶ Start',
@@ -577,20 +580,21 @@ const en: Dict = {
     undoDelete: 'Undo delete',
     exportText: 'Export transcript and answers as TXT (imported material excluded)',
     resume: 'Resume',
-    resumeSetTitle: (name: string, chars: number) =>
-      `Resume: ${name} (${chars} chars) — click to replace (.md/.txt/.docx/.pdf)`,
-    resumeEmptyTitle: 'Import my resume (.md/.txt/.docx/.pdf)',
-    resumeRemoveTitle: 'Remove resume',
+    resumeAddTitle: 'Add a resume (.md/.txt/.docx/.pdf, multiple allowed)',
+    resumeItemTitle: (name: string, chars: number) => `Resume: ${name} (${chars} chars) — click to remove`,
     jd: 'JD',
     jdSetTitle: (name: string, chars: number) =>
       `Job description: ${name} (${chars} chars) — click to replace (.md/.txt/.docx/.pdf)`,
     jdEmptyTitle: 'Import the job description (.md/.txt/.docx/.pdf)',
     jdRemoveTitle: 'Remove job description',
+    code: 'Code',
+    codeAddTitle: 'Add a project source folder (local structure digest, multiple allowed)',
+    codeItemTitle: (name: string, chars: number) => `Project code: ${name} (${chars} chars) — click to remove`,
     clear: 'Clear',
     clearTitle: 'Clear this session’s answers',
     empty: 'Hit “⚡Ans” on one of their transcript lines to have the AI answer it, or ask anything below. Answers accumulate here.',
     emptyKbHint:
-      '\n\nTip: import your resume / the JD with “📄Resume” “📋JD” above (docx/pdf supported) for answers tailored to you.',
+      '\n\nTip: import your resume / the JD / a project folder with “📄Resume” “📋JD” “🗂Code” above (docx/pdf supported) for answers tailored to you.',
     stop: 'Stop',
     copy: 'Copy',
     copyTitle: 'Copy',

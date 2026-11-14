@@ -4,6 +4,7 @@
  */
 export const PROTOCOL_VERSION = 1;
 
+import type { MaterialItem } from './material';
 import type { ProviderCapability, ProviderId } from './providerCatalog';
 export type { ProviderCapability, ProviderId } from './providerCatalog';
 import type { TrayRendererCommand } from './trayMenu';
@@ -30,8 +31,8 @@ export type FontScale = 'small' | 'medium' | 'large';
 export type ThemeMode = 'dark' | 'light' | 'system';
 /** UI display language (independent of answerLang, which steers the LLM) */
 export type UiLang = 'zh' | 'en';
-/** per-session material slots: resume vs job description */
-export type KbSlot = 'resume' | 'jd';
+/** per-session material slots: resume vs job description vs project-code digest */
+export type KbSlot = 'resume' | 'jd' | 'code';
 
 /** outcome of a provider connection test (Phase 3 runs them; the settings
  * schema stores the last result so the UI can show it after a restart) */
@@ -466,6 +467,13 @@ export interface StoredSession {
   resumeText?: string;
   jdName?: string;
   jdText?: string;
+  /** third slot: project-source structure digest (electron/codedigest.ts) */
+  codeName?: string;
+  codeText?: string;
+  /** multi-slot material (multi-resume / multi-project): canonical lists.
+   * Legacy single-slot fields above are migrated into these on load. */
+  resumeItems?: MaterialItem[];
+  codeItems?: MaterialItem[];
   /** rolling interview memo (P1): ≤800-char structured summary, async-updated */
   memo?: string;
   /** optional in old files; SessionStore normalizes absence to disabled */
@@ -497,6 +505,12 @@ export interface LlmAskPayload {
   /** dual-slot session material (P0-2) */
   resume?: string;
   jd?: string;
+  /** project-source digest slot (codePick → codedigest.ts) */
+  code?: string;
+  /** multi-slot material (multi-resume / multi-project); legacy single fields
+   * above stay accepted for compat but the renderer no longer sends them */
+  resumeItems?: MaterialItem[];
+  codeItems?: MaterialItem[];
   /** rolling interview memo (P1) */
   memo?: string;
   /** per-session local-library scope; omitted/disabled preserves legacy behavior */
@@ -558,6 +572,10 @@ export const IPC = {
   ragRebuild: 'rag:rebuild',
   /** main -> renderer: RagStatus progress */
   ragStatus: 'rag:status',
+  /** invoke: () => {name,digest,chars,files} | null — pick a project folder,
+   * scan it into a deterministic structure digest (electron/codedigest.ts,
+   * no LLM) for the CURRENT session's third material slot */
+  codePick: 'knowledge:codePick',
   /** invoke: () => SessionsFile — load persisted sessions */
   sessionsLoad: 'sessions:load',
   /** send: (SessionsFile) — persist sessions (debounced by renderer) */
@@ -588,9 +606,9 @@ export const IPC = {
   llmCancel: 'llm:cancel',
   /** main -> renderer: LlmEvent stream */
   llmEvent: 'llm:event',
-  /** send: ({resume?, jd?}) — warm the DeepSeek KV prefix cache (P1-6):
-   * one max_tokens=1 request whose system prompt is byte-identical to real
-   * answer requests, so the first real question prefills from cache */
+  /** send: ({resumeItems?, jd?, codeItems?}) — warm the DeepSeek KV prefix
+   * cache (P1-6): one max_tokens=1 request whose system prompt is byte-identical
+   * to real answer requests, so the first real question prefills from cache */
   llmPrewarm: 'llm:prewarm',
   /** invoke: ({memo, question, answer}) => string — async rolling interview
    * memo update (P1-5); cheap off-critical-path deepseek-chat call, '' = keep old */

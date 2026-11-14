@@ -1,6 +1,7 @@
 import { hintProps } from '../surfaceHints';
 import { useEffect, useRef, useState } from 'react';
 import type { KbSlot, StoredSession } from '../../shared/protocol';
+import type { MaterialItem } from '../../shared/material';
 import { sessionText } from '../../shared/sessionActions';
 import { useT } from '../i18n';
 
@@ -26,10 +27,10 @@ export function AnswerSession({
   sessions,
   currentId,
   turns,
-  resumeName,
-  resumeChars,
+  resumeItems,
   jdName,
   jdChars,
+  codeItems,
   notice,
   visionReady,
   answersReady,
@@ -41,7 +42,7 @@ export function AnswerSession({
   onOpenRagScope,
   onRename,
   onPickKb,
-  onClearKb,
+  onRemoveKb,
   onCancel,
   onRetry,
   onClear,
@@ -51,10 +52,12 @@ export function AnswerSession({
   sessions: StoredSession[];
   currentId: string;
   turns: AnswerTurn[];
-  resumeName?: string;
-  resumeChars: number;
+  /** resumes: every pick APPENDS; each chip removes its own item */
+  resumeItems: MaterialItem[];
   jdName?: string;
   jdChars: number;
+  /** project digests: every folder pick APPENDS; each chip removes its own */
+  codeItems: MaterialItem[];
   /** transient parse warning (e.g. scanned PDF with no text layer) */
   notice?: string | null;
   visionReady: boolean;
@@ -68,7 +71,7 @@ export function AnswerSession({
   onOpenRagScope?: () => void;
   onRename: (id: string, name: string) => void;
   onPickKb: (slot: KbSlot) => void;
-  onClearKb: (slot: KbSlot) => void;
+  onRemoveKb: (slot: KbSlot, index: number) => void;
   onCancel: (id: string) => void;
   onRetry: (turn: AnswerTurn) => void;
   onClear: () => void;
@@ -167,20 +170,24 @@ export function AnswerSession({
         <button className="btn btn-sm" onClick={() => onDelete(currentId)} {...hintProps(t.answer.deleteTitle)} aria-label={t.answer.deleteTitle}>
           🗑
         </button>
-        <button
-          className={resumeChars > 0 ? 'btn btn-sm btn-on' : 'btn btn-sm'}
-          onClick={() => onPickKb('resume')}
-          {...hintProps(resumeChars > 0
-              ? t.answer.resumeSetTitle(resumeName ?? '', resumeChars)
-              : t.answer.resumeEmptyTitle)}
-        >
-          📄{resumeChars > 0 ? resumeName ?? t.answer.resume : t.answer.resume}
-        </button>
-        {resumeChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('resume')} {...hintProps(t.answer.resumeRemoveTitle)} aria-label={t.answer.resumeRemoveTitle}>
-            ×
+        {resumeItems.map((it, i) => (
+          <button
+            key={`r${i}`}
+            className="btn btn-sm btn-on"
+            onClick={() => onRemoveKb('resume', i)}
+            {...hintProps(t.answer.resumeItemTitle(it.name, it.text.length))}
+          >
+            📄{it.name} ×
           </button>
-        )}
+        ))}
+        <button
+          className="btn btn-sm"
+          onClick={() => onPickKb('resume')}
+          {...hintProps(t.answer.resumeAddTitle)}
+        >
+          📄{t.answer.resume}
+          {resumeItems.length ? ` +${resumeItems.length}` : ''}
+        </button>
         <button
           className={jdChars > 0 ? 'btn btn-sm btn-on' : 'btn btn-sm'}
           onClick={() => onPickKb('jd')}
@@ -189,10 +196,28 @@ export function AnswerSession({
           📋{jdChars > 0 ? jdName ?? t.answer.jd : t.answer.jd}
         </button>
         {jdChars > 0 && (
-          <button className="btn btn-sm" onClick={() => onClearKb('jd')} {...hintProps(t.answer.jdRemoveTitle)} aria-label={t.answer.jdRemoveTitle}>
+          <button className="btn btn-sm" onClick={() => onRemoveKb('jd', 0)} {...hintProps(t.answer.jdRemoveTitle)} aria-label={t.answer.jdRemoveTitle}>
             ×
           </button>
         )}
+        {codeItems.map((it, i) => (
+          <button
+            key={`c${i}`}
+            className="btn btn-sm btn-on"
+            onClick={() => onRemoveKb('code', i)}
+            {...hintProps(t.answer.codeItemTitle(it.name, it.text.length))}
+          >
+            🗂{it.name} ×
+          </button>
+        ))}
+        <button
+          className="btn btn-sm"
+          onClick={() => onPickKb('code')}
+          {...hintProps(t.answer.codeAddTitle)}
+        >
+          🗂{t.answer.code}
+          {codeItems.length ? ` +${codeItems.length}` : ''}
+        </button>
         <span className="session-spacer" />
         <button className="btn btn-sm" onClick={onClear} {...hintProps(t.answer.clearTitle)}>
           {t.answer.clear}
@@ -203,7 +228,7 @@ export function AnswerSession({
         {turns.length === 0 ? (
           <div className="pane-empty">
             {t.answer.empty}
-            {resumeChars === 0 && t.answer.emptyKbHint}
+            {resumeItems.length === 0 && t.answer.emptyKbHint}
           </div>
         ) : (
           turns.map((turn) => (

@@ -14,6 +14,7 @@ import {
   buildMemoUpdateMessages,
   buildPrewarmMessages,
   buildStablePrefix,
+  buildStablePrefixFromMaterial,
   buildTranslateMessages,
   buildVisionMessages,
   clampMemo,
@@ -25,6 +26,7 @@ import {
   smartClip,
   JD_PRIORITY,
   MAX_BACKGROUND_CHARS,
+  MAX_CODE_CHARS,
   MAX_CONTEXT_CHARS,
   MAX_MEMO_CHARS,
   RESUME_PRIORITY,
@@ -278,6 +280,173 @@ describe('buildStablePrefix (prefix-cache friendliness)', () => {
     const huge = 'B'.repeat(20000);
     const p = buildStablePrefix('', huge, 'chinese');
     expect(p).toContain('B'.repeat(MAX_BACKGROUND_CHARS));
+  });
+});
+
+describe('project-code digest slot (【项目代码摘要】)', () => {
+  it('injects the code digest as a delimited section of the system prompt', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: [],
+      code: 'src/a.ts (10 行) · foo, Bar',
+    });
+    const sys = msgs[0].content as string;
+    expect(sys).toContain('【项目代码摘要】');
+    expect(sys).toContain('src/a.ts (10 行) · foo, Bar');
+    expect(sys).toContain('【项目代码摘要结束】');
+  });
+  it('adds a persona rule anchoring technical answers to the digest (only when present)', () => {
+    const withCode = buildStablePrefix('', '', 'chinese', 'CODE');
+    const without = buildStablePrefix('', '', 'chinese');
+    expect(withCode).toContain('不臆造代码结构');
+    expect(without).not.toContain('不臆造代码结构');
+  });
+  it('is byte-stable with the code slot (prefix-cache safe)', () => {
+    expect(buildStablePrefix('R', 'J', 'chinese', 'C')).toBe(buildStablePrefix('R', 'J', 'chinese', 'C'));
+  });
+  it('caps the digest to MAX_CODE_CHARS', () => {
+    const huge = 'C'.repeat(20000);
+    const p = buildStablePrefix('', '', 'chinese', huge);
+    expect(p).toContain('C'.repeat(MAX_CODE_CHARS));
+    expect(p).not.toContain('C'.repeat(MAX_CODE_CHARS + 1));
+  });
+  it('prewarm stays byte-identical to real requests when the digest is present', () => {
+    const prefix = buildStablePrefix('R', 'J', 'chinese', 'DIGEST');
+    const real = buildAnswerMessages({
+      mode: 'segment',
+      question: 'q',
+      recentTranscript: [],
+      resume: 'R',
+      jd: 'J',
+      code: 'DIGEST',
+    });
+    expect(buildPrewarmMessages(prefix)[0].content).toBe(real[0].content);
+  });
+  it('free mode offers the digest as optional reference (no persona)', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: '我的项目用了什么技术栈？',
+      recentTranscript: [],
+      code: 'DIGEST-MARK',
+    });
+    const joined = JSON.stringify(msgs);
+    expect(joined).toContain('DIGEST-MARK');
+    expect(joined).toContain('供参考');
+    expect(joined).not.toContain('提词');
+  });
+  it('translate mode never carries the digest', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'translate',
+      question: 'Hi',
+      recentTranscript: [],
+      code: '机密摘要',
+    });
+    expect(JSON.stringify(msgs)).not.toContain('机密摘要');
+  });
+});
+
+describe('multi-slot material (multi-resume / multi-project)', () => {
+  it('joins multiple resumes with numbered headers', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: [],
+      resumeItems: [
+        { name: 'resume-a.md', text: '我在A公司做过语音项目' },
+        { name: 'resume-b.pdf', text: '我在B公司做过推荐系统' },
+      ],
+    });
+    const sys = msgs[0].content as string;
+    expect(sys).toContain('【简历 1/2：resume-a.md】');
+    expect(sys).toContain('我在A公司做过语音项目');
+    expect(sys).toContain('【简历 2/2：resume-b.pdf】');
+    expect(sys).toContain('我在B公司做过推荐系统');
+  });
+  it('keeps the legacy prompt shape for a single resume (no header)', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: [],
+      resumeItems: [{ name: 'only.md', text: '唯一一份简历' }],
+    });
+    const sys = msgs[0].content as string;
+    expect(sys).toContain('唯一一份简历');
+    expect(sys).not.toContain('【简历 1/');
+  });
+  it('still bounds the combined resume to the char budget', () => {
+    const huge = 'K'.repeat(20000);
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: [],
+      resumeItems: [
+        { name: 'a', text: huge },
+        { name: 'b', text: huge },
+      ],
+      jd: '岗位要求',
+    });
+    const sys = msgs[0].content as string;
+    expect(sys.length).toBeLessThan(9000);
+    expect(sys).toContain('岗位要求');
+  });
+  it('splits the code budget across multiple project digests', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'segment',
+      question: 'x',
+      recentTranscript: [],
+      codeItems: [
+        { name: 'projA', text: 'A'.repeat(9000) },
+        { name: 'projB', text: 'B'.repeat(9000) },
+      ],
+    });
+    const sys = msgs[0].content as string;
+    expect(sys).toContain('【项目 1/2：projA】');
+    expect(sys).toContain('【项目 2/2：projB】');
+    // both digests survive the split (each keeps its head)
+    expect(sys).toContain('A'.repeat(2000));
+    expect(sys).toContain('B'.repeat(2000));
+    expect(sys).toContain('【项目代码摘要结束】');
+  });
+  it('free mode references every resume and project', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'free',
+      freeQuestion: '我最大的优势是什么',
+      recentTranscript: [],
+      resumeItems: [{ name: 'a.md', text: 'RESUME-MARK' }],
+      codeItems: [{ name: 'proj', text: 'CODE-MARK' }],
+    });
+    const joined = JSON.stringify(msgs);
+    expect(joined).toContain('RESUME-MARK');
+    expect(joined).toContain('CODE-MARK');
+  });
+  it('translate mode never carries multi-slot items', () => {
+    const msgs = buildAnswerMessages({
+      mode: 'translate',
+      question: 'Hi',
+      recentTranscript: [],
+      resumeItems: [{ name: 'a', text: '机密简历' }],
+      codeItems: [{ name: 'p', text: '机密摘要' }],
+    });
+    const joined = JSON.stringify(msgs);
+    expect(joined).not.toContain('机密简历');
+    expect(joined).not.toContain('机密摘要');
+  });
+  it('prewarm stays byte-identical to real requests with multi-slot items', () => {
+    const items = [
+      { name: 'a.md', text: '简历甲' },
+      { name: 'b.pdf', text: '简历乙' },
+    ];
+    const digests = [{ name: 'proj', text: 'DIGEST' }];
+    const prefix = buildStablePrefixFromMaterial({ resumeItems: items, codeItems: digests, lang: 'chinese' });
+    const real = buildAnswerMessages({
+      mode: 'segment',
+      question: 'q',
+      recentTranscript: [],
+      resumeItems: items,
+      codeItems: digests,
+    });
+    expect(buildPrewarmMessages(prefix)[0].content).toBe(real[0].content);
   });
 });
 
