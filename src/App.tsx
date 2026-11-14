@@ -18,6 +18,7 @@ import {
   type TranscriptSegment,
 } from '../shared/transcript';
 import { isLikelyQuestion } from '../shared/textHeuristics';
+import { combineCodeDigests, joinResumes, type MaterialItem } from '../shared/material';
 import { captureKindForPlatform } from '../shared/platform';
 import { deriveServiceHealth } from '../shared/healthState';
 import { LoopbackCapture } from './audio/loopbackCapture';
@@ -63,6 +64,16 @@ function migrateKbSlots(s: StoredSession, fallbackName: string): StoredSession {
   if (!s.kbText || s.resumeText) return s;
   const { kbName, kbText, ...rest } = s;
   return { ...rest, resumeName: kbName ?? fallbackName, resumeText: kbText };
+}
+
+/** legacy single-slot resume / code fields → canonical multi-slot lists */
+function migrateMultiSlots(s: StoredSession): StoredSession {
+  const resumeItems =
+    s.resumeItems ?? (s.resumeText ? [{ name: s.resumeName ?? '', text: s.resumeText }] : undefined);
+  const codeItems =
+    s.codeItems ?? (s.codeText ? [{ name: s.codeName ?? '', text: s.codeText }] : undefined);
+  const { resumeName, resumeText, codeName, codeText, ...rest } = s;
+  return { ...rest, ...(resumeItems && { resumeItems }), ...(codeItems && { codeItems }) };
 }
 
 /** first-question topic → a short session title */
@@ -150,21 +161,25 @@ export function App() {
     ]);
   }, []);
 
-  /** current session's dual-slot material (resume / JD / rolling memo) */
-  const currentMaterial = useCallback((): { resume?: string; jd?: string; memo?: string } => {
-    const s = sessionsRef.current.find((x) => x.id === currentIdRef.current);
-    return {
-      resume: s?.resumeText || undefined,
-      jd: s?.jdText || undefined,
-      memo: s?.memo || undefined,
-    };
-  }, []);
+  /** current session's multi-slot material (resumes / JD / project digests / memo) */
+  const currentMaterial = useCallback(
+    (): { resumeItems?: MaterialItem[]; jd?: string; codeItems?: MaterialItem[]; memo?: string } => {
+      const s = sessionsRef.current.find((x) => x.id === currentIdRef.current);
+      return {
+        resumeItems: s?.resumeItems,
+        jd: s?.jdText || undefined,
+        codeItems: s?.codeItems,
+        memo: s?.memo || undefined,
+      };
+    },
+    [],
+  );
 
   /** P1-6: ask main to warm the DeepSeek prefix cache for the current material */
   const prewarm = useCallback(
     (immediate: boolean) => {
       const m = currentMaterial();
-      window.mc.prewarm({ resume: m.resume, jd: m.jd, immediate });
+      window.mc.prewarm({ resumeItems: m.resumeItems, jd: m.jd, codeItems: m.codeItems, immediate });
     },
     [currentMaterial],
   );
@@ -250,7 +265,14 @@ export function App() {
         status: 'streaming',
       });
       maybeTitle(sid, question || tRef.current.app.shotQuestion);
-      const background = [session.resumeText, session.jdText].filter(Boolean).join('\n\n') || undefined;
+      const background =
+        [
+          joinResumes(session.resumeItems ?? []),
+          session.jdText || undefined,
+          combineCodeDigests(session.codeItems ?? [], 3000),
+        ]
+          .filter(Boolean)
+          .join('\n\n') || undefined;
       window.mc.shotAsk({ requestId, question, background, imageDataUrl, ragScope: sessionsRef.current.find((s) => s.id === sid)?.ragScope });
     },
     [appendTurn, currentMaterial, maybeTitle],
@@ -281,9 +303,11 @@ export function App() {
         // engine rebuild — translations then landed on multiple bubbles)
         setSessions(
           f.sessions.map((s) =>
-            migrateKbSlots(
-              { ...s, segments: reindexSegments(s.segments ?? []) },
-              tRef.current.app.legacyKbName,
+            migrateMultiSlots(
+              migrateKbSlots(
+                { ...s, segments: reindexSegments(s.segments ?? []) },
+                tRef.current.app.legacyKbName,
+              ),
             ),
           ),
         );
@@ -687,6 +711,46 @@ export function App() {
   const pickKb = useCallback(
     async (slot: KbSlot) => {
       const sid = currentIdRef.current;
+      const cur = currentMaterial();
+      // resume / code slots APPEND (multi-slot); JD stays a single replace slot
+      if (slot === 'resume' || slot === 'code') {
+        const isCode = slot === 'code';
+        let name: string;
+        let text: string;
+        if (isCode) {
+          const r = await window.mc.pickCode();
+          if (!r) return;
+          name = r.name;
+          text = r.digest;
+        } else {
+          const r = await window.mc.pickKnowledge(slot);
+          if (!r) return;
+          name = r.name;
+          text = r.text;
+        }
+        if (!text.trim()) {
+          // deterministic parsers return '' for scanned PDFs / empty folders
+          setKbNotice(isCode ? tRef.current.app.codeScanEmpty(name) : tRef.current.app.kbNoText(name));
+          return;
+        }
+        setKbNotice(null);
+        const item = { name, text };
+        patchSession(sid, (s) =>
+          isCode
+            ? { ...s, codeItems: [...(s.codeItems ?? []), item] }
+            : { ...s, resumeItems: [...(s.resumeItems ?? []), item] },
+        );
+        if (sid !== currentIdRef.current) return;
+        // material changed → reheat the prefix cache with the fresh bytes;
+        // patchSession is async (React state), so pass the new slots directly
+        window.mc.prewarm({
+          resumeItems: isCode ? cur.resumeItems : [...(cur.resumeItems ?? []), item],
+          jd: cur.jd,
+          codeItems: isCode ? [...(cur.codeItems ?? []), item] : cur.codeItems,
+          immediate: true,
+        });
+        return;
+      }
       const r = await window.mc.pickKnowledge(slot);
       if (!r) return;
       if (!r.text.trim()) {
@@ -695,34 +759,41 @@ export function App() {
         return;
       }
       setKbNotice(null);
-      patchSession(sid, (s) =>
-        slot === 'resume'
-          ? { ...s, resumeName: r.name, resumeText: r.text }
-          : { ...s, jdName: r.name, jdText: r.text },
-      );
+      patchSession(sid, (s) => ({ ...s, jdName: r.name, jdText: r.text }));
       if (sid !== currentIdRef.current) return;
       // material changed → reheat the prefix cache with the fresh bytes;
       // patchSession is async (React state), so pass the new slots directly
       window.mc.prewarm({
-        resume: slot === 'resume' ? r.text : currentMaterial().resume,
-        jd: slot === 'jd' ? r.text : currentMaterial().jd,
+        resumeItems: cur.resumeItems,
+        jd: r.text,
+        codeItems: cur.codeItems,
         immediate: true,
       });
     },
     [patchSession, currentMaterial],
   );
 
-  const clearKb = useCallback(
-    (slot: KbSlot) => {
+  /** remove ONE material item (chips in the session bar); jd (index 0) clears */
+  const removeKb = useCallback(
+    (slot: KbSlot, index: number) => {
+      const cur = currentMaterial();
+      if (slot === 'jd') {
+        patchSession(currentIdRef.current, (s) => ({ ...s, jdName: undefined, jdText: undefined }));
+        window.mc.prewarm({ resumeItems: cur.resumeItems, jd: undefined, codeItems: cur.codeItems });
+        return;
+      }
+      const drop = <T,>(arr: T[] | undefined): T[] | undefined =>
+        arr?.filter((_, i) => i !== index);
       patchSession(currentIdRef.current, (s) =>
         slot === 'resume'
-          ? { ...s, resumeName: undefined, resumeText: undefined }
-          : { ...s, jdName: undefined, jdText: undefined },
+          ? { ...s, resumeItems: drop(s.resumeItems) }
+          : { ...s, codeItems: drop(s.codeItems) },
       );
       // prefix went stale; reheats now if capturing, else at the next ▶
       window.mc.prewarm({
-        resume: slot === 'resume' ? undefined : currentMaterial().resume,
-        jd: slot === 'jd' ? undefined : currentMaterial().jd,
+        resumeItems: slot === 'resume' ? drop(cur.resumeItems) : cur.resumeItems,
+        jd: cur.jd,
+        codeItems: slot === 'code' ? drop(cur.codeItems) : cur.codeItems,
       });
     },
     [patchSession, currentMaterial],
@@ -954,10 +1025,10 @@ export function App() {
           sessions={sessions}
           currentId={currentId}
           turns={current?.turns ?? []}
-          resumeName={current?.resumeName}
-          resumeChars={current?.resumeText?.length ?? 0}
+          resumeItems={current?.resumeItems ?? []}
           jdName={current?.jdName}
           jdChars={current?.jdText?.length ?? 0}
+          codeItems={current?.codeItems ?? []}
           notice={kbNotice}
           visionReady={visionReady}
           answersReady={answersReady}
@@ -977,7 +1048,7 @@ export function App() {
           } : undefined}
           onRename={renameSession}
           onPickKb={(slot) => void pickKb(slot)}
-          onClearKb={clearKb}
+          onRemoveKb={removeKb}
           onCancel={cancelTurn}
           onRetry={(turn) => { if (turn.kind !== 'vision') askLlm(turn.kind, turn.label); }}
           onClear={() => patchSession(currentIdRef.current, (s) => ({ ...s, turns: [] }))}

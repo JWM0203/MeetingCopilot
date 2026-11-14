@@ -7,9 +7,9 @@ import { I18nProvider } from '../src/i18n';
 function render(turn: AnswerTurn, lang: 'en' | 'zh' = 'en') {
   const noop = () => {};
   return renderToStaticMarkup(createElement(I18nProvider, { lang, children: createElement(AnswerSession, {
-    sessions: [], currentId: 'fixture', turns: [turn], resumeChars: 0, jdChars: 0,
+    sessions: [], currentId: 'fixture', turns: [turn], resumeItems: [], codeItems: [], jdName: undefined, jdChars: 0,
     visionReady: false, answersReady: true, answersHint: '', onSwitch: noop, onNew: noop,
-    onDelete: noop, onRename: noop, onPickKb: noop, onClearKb: noop, onCancel: noop,
+    onDelete: noop, onRename: noop, onPickKb: noop, onRemoveKb: noop, onCancel: noop,
     onRetry: noop, onClear: noop, onFreeAsk: noop, onShotAsk: noop,
   }) }));
 }

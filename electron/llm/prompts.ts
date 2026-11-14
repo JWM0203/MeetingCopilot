@@ -13,6 +13,7 @@ import { RAG_CONTEXT_CHAR_BUDGET } from '../../shared/rag';
  */
 import type { ChatMessage } from './adapter';
 import { classifyQuestion, isLikelyQuestion, type QuestionKind } from '../../shared/textHeuristics';
+import { combineCodeDigests, joinResumes, type MaterialItem } from '../../shared/material';
 
 export { isLikelyQuestion, classifyQuestion };
 
@@ -46,6 +47,9 @@ export const MAX_BACKGROUND_CHARS = 8000;
 /** when both slots are present the resume gets the bigger share */
 export const RESUME_BUDGET = 5000;
 export const JD_BUDGET = MAX_BACKGROUND_CHARS - RESUME_BUDGET;
+/** project-source digest slot (【项目代码摘要】): its own budget, on top of the
+ * resume/JD background — the digest is pre-bounded by codedigest.ts anyway */
+export const MAX_CODE_CHARS = 8000;
 
 /** resume: keep project/work-experience sections when over budget */
 export const RESUME_PRIORITY =
@@ -82,15 +86,22 @@ export function smartClip(text: string, budget: number, priority: RegExp): strin
 }
 
 /**
- * The BYTE-STABLE system prompt: persona + resume + JD + language directive.
- * Same inputs MUST yield the identical string (no timestamps / randomness) —
- * the LLM prewarm request and every real request share this prefix so the
- * provider's prefix cache (DeepSeek 0.1x pricing + faster prefill) hits.
+ * The BYTE-STABLE system prompt: persona + resume + JD + code digest + language
+ * directive. Same inputs MUST yield the identical string (no timestamps /
+ * randomness) — the LLM prewarm request and every real request share this
+ * prefix so the provider's prefix cache (DeepSeek 0.1x pricing + faster
+ * prefill) hits.
  */
-export function buildStablePrefix(resume: string, jd: string, lang: AnswerLang): string {
+export function buildStablePrefix(resume: string, jd: string, lang: AnswerLang, code?: string): string {
   const parts = [...PERSONA];
   const r = resume.trim();
   const j = jd.trim();
+  const c = (code ?? '').trim();
+  if (c) {
+    // a persona rule that only exists while the code slot is present — still
+    // byte-stable for any fixed set of inputs (prefix-cache safe)
+    parts.push('- 技术实现细节优先以【项目代码摘要】为准：引用真实的模块、函数、路由与数据流，不臆造代码结构；');
+  }
   if (r) {
     parts.push(
       '',
@@ -107,8 +118,41 @@ export function buildStablePrefix(resume: string, jd: string, lang: AnswerLang):
       '【岗位JD结束】',
     );
   }
+  if (c) {
+    parts.push(
+      '',
+      '【项目代码摘要】（我真实项目的源码结构：目录树、依赖、符号表；技术实现类回答以此为准确述）',
+      c.slice(0, MAX_CODE_CHARS),
+      '【项目代码摘要结束】',
+    );
+  }
   parts.push('', langDirective(lang));
   return parts.join('\n');
+}
+
+/**
+ * ONE entry point for building the stable prefix from session material —
+ * used by BOTH the real answer path (buildAnswerMessages) and the prewarm
+ * path (main.ts stablePrefixFor), so the two stay byte-identical by
+ * construction no matter how many resume / project items are present.
+ */
+export interface PrefixMaterialInput {
+  resumeItems?: MaterialItem[];
+  codeItems?: MaterialItem[];
+  jd?: string;
+  /** legacy single-slot resume / global KB fallback */
+  resume?: string;
+  background?: string;
+  lang: AnswerLang;
+}
+
+export function buildStablePrefixFromMaterial(input: PrefixMaterialInput): string {
+  const resume =
+    joinResumes(input.resumeItems ?? []) ||
+    (input.resume ?? '').trim() ||
+    (input.background ?? '').trim();
+  const code = combineCodeDigests(input.codeItems ?? [], MAX_CODE_CHARS);
+  return buildStablePrefix(resume, input.jd ?? '', input.lang, code);
 }
 
 /** one advisory line appended to the user message; '' when unknown */
@@ -187,10 +231,16 @@ export interface AnswerPromptInput {
   answerLang?: AnswerLang;
   /** prior Q&A turns for a coherent session (oldest first) */
   history?: ChatMessage[];
-  /** resume slot (双槽资料); falls back to `background` */
-  resume?: string;
-  /** job-description slot (双槽资料) */
+  /** multi-slot resumes: joined with numbered headers (canonical source) */
+  resumeItems?: MaterialItem[];
+  /** job-description slot (单槽 JD) */
   jd?: string;
+  /** multi-slot project digests: budget split evenly across items */
+  codeItems?: MaterialItem[];
+  /** legacy single-slot resume; falls back to `background` */
+  resume?: string;
+  /** legacy single-slot code digest (pre multi-slot) */
+  code?: string;
   /** legacy single-slot KB / global default — treated as resume material */
   background?: string;
   /** rolling interview memo (P1) — slow-changing block, its own message */
@@ -271,8 +321,13 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
 
   const lang: AnswerLang = input.answerLang ?? 'chinese';
   const context = clampTranscript(input.recentTranscript);
-  const resume = (input.resume ?? '').trim() || (input.background ?? '').trim();
+  // canonical multi-slot sources first, legacy single-slot fields as fallback
+  const resume =
+    joinResumes(input.resumeItems ?? []) ||
+    (input.resume ?? '').trim() ||
+    (input.background ?? '').trim();
   const jd = (input.jd ?? '').trim();
+  const code = combineCodeDigests(input.codeItems ?? [], MAX_CODE_CHARS) || (input.code ?? '').trim();
 
   // Free "随便问": raw pass-through — NO meeting-assistant persona, so identity
   // / "which model are you" questions get the model's truthful answer. The
@@ -283,6 +338,7 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
     if (retrieved) refs.push(retrieved);
     if (resume) refs.push(`【本人资料（简历）】\n${resume.slice(0, MAX_BACKGROUND_CHARS)}`);
     if (jd) refs.push(`【岗位JD】\n${jd.slice(0, MAX_BACKGROUND_CHARS)}`);
+    if (code) refs.push(`【项目代码摘要】\n${code.slice(0, MAX_CODE_CHARS)}`);
     if (context.length) refs.push(`【最近的对话转录】\n${context.join('\n')}`);
     const msgs: ChatMessage[] = [];
     if (refs.length) {
@@ -294,7 +350,7 @@ export function buildAnswerMessages(input: AnswerPromptInput): ChatMessage[] {
   }
 
   // segment / continuous: teleprompter with the stable prefix
-  const msgs: ChatMessage[] = [{ role: 'system', content: buildStablePrefix(resume, jd, lang) }];
+  const msgs: ChatMessage[] = [{ role: 'system', content: buildStablePrefix(resume, jd, lang, code) }];
 
   const retrieved = retrievalBlock(input.retrievedContext);
   if (retrieved) msgs.push({ role: 'user', content: retrieved });

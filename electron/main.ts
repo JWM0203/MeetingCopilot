@@ -48,17 +48,19 @@ import { isRendererCommand, type TrayCommand, type TrayMenuState } from '../shar
 import { KnowledgeStore } from './knowledge';
 import { SessionStore } from './sessions';
 import { DOC_EXTENSIONS, extractDocText } from './docparse';
+import { scanProjectDigest } from './codedigest';
 import { chatOnce, chatStream, type ChatResult } from './llm/adapter';
 import { visionChat } from './llm/vision';
 import {
   buildAnswerMessages,
   buildMemoUpdateMessages,
   buildPrewarmMessages,
-  buildStablePrefix,
+  buildStablePrefixFromMaterial,
   buildTranslateMessages,
   buildVisionMessages,
   clampMemo,
 } from './llm/prompts';
+import type { MaterialItem } from '../shared/material';
 import type { AppInfo, PublicSettings, UiLang } from '../shared/protocol';
 import {
   IPC,
@@ -706,10 +708,21 @@ function bootstrap(): void {
     let keepWarmTimer: NodeJS.Timeout | null = null;
 
     /** same material fallback as llmAsk — prewarm MUST match real requests byte-for-byte */
-    function stablePrefixFor(resume?: string, jd?: string): string {
-      const hasMaterial = !!(resume || jd);
-      const effResume = resume || (hasMaterial ? '' : knowledge.text);
-      return buildStablePrefix(effResume, jd ?? '', settings.data.llm.answerLang);
+    function stablePrefixFor(
+      resumeItems?: MaterialItem[],
+      jd?: string,
+      codeItems?: MaterialItem[],
+      legacyResume?: string,
+    ): string {
+      const hasMaterial = !!(resumeItems?.length || jd || codeItems?.length || legacyResume);
+      const items = resumeItems?.length ? resumeItems : hasMaterial ? [] : [{ name: '', text: knowledge.text }];
+      return buildStablePrefixFromMaterial({
+        resumeItems: items,
+        jd: jd ?? '',
+        codeItems: codeItems ?? [],
+        resume: legacyResume,
+        lang: settings.data.llm.answerLang,
+      });
     }
 
     async function doPrewarm(prefix: string, reason: string): Promise<void> {
@@ -733,8 +746,16 @@ function bootstrap(): void {
 
     ipcMain.on(
       IPC.llmPrewarm,
-      (_e, payload: { resume?: string; jd?: string; immediate?: boolean } = {}) => {
-        const prefix = stablePrefixFor(payload.resume, payload.jd);
+      (
+        _e,
+        payload: {
+          resumeItems?: MaterialItem[];
+          jd?: string;
+          codeItems?: MaterialItem[];
+          immediate?: boolean;
+        } = {},
+      ) => {
+        const prefix = stablePrefixFor(payload.resumeItems, payload.jd, payload.codeItems);
         const dirty = prefix !== lastPrefix;
         const cold = Date.now() - lastPrefixActivity >= PREWARM_IDLE_MS;
         if (!dirty && !cold) return;
@@ -1014,6 +1035,22 @@ function bootstrap(): void {
         return null;
       }
     });
+    ipcMain.handle(IPC.codePick, async () => {
+      const r = await dialog.showOpenDialog({
+        title: T().pickCodeTitle,
+        properties: ['openDirectory'],
+      });
+      if (r.canceled || !r.filePaths[0]) return null;
+      try {
+        // deterministic fs walk + symbol extraction (electron/codedigest.ts) —
+        // no LLM in the loop, same latency-first philosophy as extractDocText
+        const d = await scanProjectDigest(r.filePaths[0]);
+        return { name: basename(r.filePaths[0]), digest: d.digest, chars: d.digest.length, files: d.files };
+      } catch (e) {
+        console.error('[knowledge] code pick failed');
+        return null;
+      }
+    });
     ipcMain.handle(IPC.sessionsLoad, () => sessionStore.load());
     ipcMain.on(IPC.sessionsSave, (_e, data) => sessionStore.save(data));
 
@@ -1134,9 +1171,15 @@ function bootstrap(): void {
         });
         if (controller.signal.aborted) return;
 
-        // session dual-slot material first; the global default KB only fills in
+        // session multi-slot material first; the global default KB only fills in
         // when the session has nothing (translate stays a clean pass-through)
-        const hasMaterial = !!(payload.resume || payload.jd || payload.background);
+        const hasMaterial = !!(
+          payload.resumeItems?.length ||
+          payload.jd ||
+          payload.codeItems?.length ||
+          payload.background ||
+          payload.resume
+        );
         const messages = buildAnswerMessages({
           mode: payload.mode,
           question: payload.question,
@@ -1144,8 +1187,10 @@ function bootstrap(): void {
           recentTranscript: payload.recentTranscript,
           answerLang: payload.answerLang ?? settings.data.llm.answerLang,
           history: payload.history,
-          resume: isTranslate ? undefined : payload.resume,
+          resumeItems: isTranslate ? undefined : payload.resumeItems,
           jd: isTranslate ? undefined : payload.jd,
+          codeItems: isTranslate ? undefined : payload.codeItems,
+          resume: isTranslate ? undefined : payload.resume,
           memo: isTranslate ? undefined : payload.memo,
           background: isTranslate ? undefined : payload.background || (hasMaterial ? undefined : knowledge.text),
           retrievedContext: retrieval.context,
@@ -1162,7 +1207,12 @@ function bootstrap(): void {
 
         // a real answer request refreshes the provider-side prefix cache itself
         if (!isTranslate && !useVision && payload.mode !== 'free') {
-          lastPrefix = stablePrefixFor(payload.resume || payload.background, payload.jd);
+          lastPrefix = stablePrefixFor(
+            payload.resumeItems,
+            payload.jd,
+            payload.codeItems,
+            payload.resume || payload.background,
+          );
           lastPrefixActivity = Date.now();
         }
 
